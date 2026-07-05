@@ -1,5 +1,5 @@
 -- =================================================================
--- BAGIAN 1: PC SPOOFING & AUTO SAVE DATA SYSTEM
+-- BAGIAN 1: FIX BUG - PC SPOOFING & STORAGE CONFIG
 -- =================================================================
 
 _G.UserInputService = game:GetService("UserInputService")
@@ -9,9 +9,9 @@ _G.Camera = workspace.CurrentCamera
 _G.Player = game.Players.LocalPlayer
 _G.CoreGui = game:GetService("CoreGui")
 
-_G.NamaFileConfig = "MacroConfig_BloxFruits_ScrollHold.json"
+_G.NamaFileConfig = "MacroConfig_BloxFruits_FixedHold.json"
 
--- PC SPOOFING (Mengelabui Roblox agar mendeteksi Input Key PC)
+-- PC SPOOF FIX (Mengunci sistem input agar membaca keyboard fisik PC)
 local metatable = getrawmetatable(game)
 if setreadonly then setreadonly(metatable, false) elseif make_writeable then make_writeable(metatable, false) end
 local oldIndex = metatable.__index
@@ -23,7 +23,7 @@ metatable.__index = newcclosure(function(self, key)
     return oldIndex(self, key)
 end)
 
--- VARIABEL CONFIG UTAMA
+-- VARIABEL DATA (STATE) AWAL
 _G.MacroState = {
     AutoM1 = false,
     Z = false, X = false, C = false, V = false, F = false,
@@ -55,14 +55,14 @@ end
 
 _G.muatSetelanDariHP()
 -- =================================================================
--- BAGIAN 2: UPGRADE UI - SCROLL BAR & TOMBOL BUKA/TUTUP (MINIMIZE)
+-- BAGIAN 2: FIX BUG - INDEPENDENT SLIDERS & MODERN SCROLL FRAME
 -- =================================================================
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "BloxFruitsModernUI"
+ScreenGui.Name = "BloxFruitsFixedUI"
 ScreenGui.Parent = _G.CoreGui:FindFirstChild("RobloxGui") or _G.CoreGui
 
--- 1. TOMBOL BUKA/TUTUP (Kecil di layar, bisa digeser-geser)
+-- 1. TOMBOL MINI BUKA/TUTUP (☰)
 local ToggleUIBtn = Instance.new("TextButton")
 ToggleUIBtn.Size = UDim2.new(0, 45, 0, 45)
 ToggleUIBtn.Position = UDim2.new(0.05, 0, 0.05, 0)
@@ -72,25 +72,25 @@ ToggleUIBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleUIBtn.Font = Enum.Font.SourceSansBold
 ToggleUIBtn.TextSize = 22
 ToggleUIBtn.Active = true
-ToggleUIBtn.Draggable = true -- Tombol buka/tutup bisa dipindah posisinya
+ToggleUIBtn.Draggable = true 
 ToggleUIBtn.Parent = ScreenGui
-Instance.new("UICorner", ToggleUIBtn).CornerRadius = UDim.new(1, 0) -- Bulat sempurna
+Instance.new("UICorner", ToggleUIBtn).CornerRadius = UDim.new(1, 0)
 
--- 2. PANEL UTAMA FRAME
+-- 2. PANEL UTAMA MENU
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 240, 0, 360) -- Ukuran kotak lebih ringkas karena pakai scroll
+MainFrame.Size = UDim2.new(0, 240, 0, 360)
 MainFrame.Position = UDim2.new(0.05, 0, 0.15, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true 
-MainFrame.Visible = true -- Default terbuka saat start
+MainFrame.Visible = true 
 MainFrame.Parent = ScreenGui
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "HOLD SKILL MACRO (SCROLL)"
+Title.Text = "FIXED MACRO PANEL"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 Title.TextSize = 12
@@ -98,23 +98,20 @@ Title.Font = Enum.Font.SourceSansBold
 Title.Parent = MainFrame
 Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 10)
 
--- Logika fungsi klik Buka / Tutup UI
-ToggleUIBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-end)
+ToggleUIBtn.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
 
--- 3. WADAH SCROLL BAR (SCROLLING FRAME) [I]
+-- 3. WADAH SCROLL BAR [I]
 local ScrollContainer = Instance.new("ScrollingFrame")
 ScrollContainer.Size = UDim2.new(1, -10, 1, -45)
 ScrollContainer.Position = UDim2.new(0, 5, 0, 40)
 ScrollContainer.BackgroundTransparency = 1
 ScrollContainer.BorderSizePixel = 0
-ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 480) -- Ukuran area dalam untuk di-scroll [I]
+ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 480) 
 ScrollContainer.ScrollBarThickness = 5
 ScrollContainer.ScrollBarImageColor3 = Color3.fromRGB(0, 120, 255)
 ScrollContainer.Parent = MainFrame
 
--- Fungsi Pembantu Komponen di dalam Scroll
+-- FUNGSI LOKAL PEMBUAT SKILL (Mencegah Bug Slider Barengan) [I]
 local currentY = 5
 _G.buatKomponenSkill = function(labelSkill, keyAktif, keyHold, allSliders, allLabels, allNames, allKeys)
     local Btn = Instance.new("TextButton")
@@ -176,12 +173,22 @@ _G.buatKomponenSkill = function(labelSkill, keyAktif, keyHold, allSliders, allLa
     SliderButton.Parent = SliderTrack
     Instance.new("UICorner", SliderButton).CornerRadius = UDim.new(1, 0)
 
-    local geser_aktif = false
-    SliderButton.MouseButton1Down:Connect(function() geser_aktif = true end)
-    _G.UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then geser_aktif = false end end)
+    -- SAKLAR LOKAL UNTUK SLIDER INI SAJA (Solusi Bug Geser Bersamaan) [I]
+    local geser_aktif_lokal = false
+    
+    SliderButton.MouseButton1Down:Connect(function() 
+        geser_aktif_lokal = true 
+    end)
+    
+    _G.UserInputService.InputEnded:Connect(function(input) 
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
+            geser_aktif_lokal = false 
+        end 
+    end)
 
     _G.UserInputService.InputChanged:Connect(function(input)
-        if geser_aktif and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if geser_aktif_lokal and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            -- Pembatasan area klik geser hanya mendeteksi sumbu X di area luar/pinggiran track slider saja
             local posisiRelatifX = input.Position.X - SliderTrack.AbsolutePosition.X
             local persentase = math.clamp(posisiRelatifX / SliderTrack.AbsoluteSize.X, 0, 1)
             local hasilWaktu = 1 + (persentase * (40 - 1))
@@ -203,6 +210,7 @@ _G.buatKomponenSkill = function(labelSkill, keyAktif, keyHold, allSliders, allLa
     return updateVisualTombol
 end
 
+-- Tombol Auto M1
 local BtnM1 = Instance.new("TextButton")
 BtnM1.Size = UDim2.new(0, 205, 0, 26)
 BtnM1.Position = UDim2.new(0, 5, 0, currentY)
@@ -276,32 +284,35 @@ for i, key in ipairs(allKeys) do
     allLabels[i].Text = "Durasi Tahan " .. allNames[i] .. ": " .. string.format("%.1f", _G.MacroState[key]) .. " Detik"
 end
 -- =================================================================
--- BAGIAN 3: LOGIKA TAHAN TOMBOL SKILL (HOLD MECHANISM) & M1 POJOK
+-- BAGIAN 3: FIX BUG - CONSTANT SIGNAL HOLD MECHANISM
 -- =================================================================
 
-local function tahanDanLepasKey(keyCode, durasiTahan)
-    -- Mulai Tahan Tombol Keyboard Internal
-    _G.VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+-- Fungsi memaksa tombol menahan dengan mengirim sinyal konstan
+local function paksaTahanDanLepasKey(keyCode, totalDurasiDetik)
+    local waktuMulai = tick()
     
-    -- Ditahan sesuai durasi detik yang kamu atur pada Slider UI [I]
-    task.wait(durasiTahan)
+    -- Mengirim sinyal tekan (true) berulang secara konstan agar tombol terkunci menahan [I]
+    while (tick() - waktuMulai) < totalDurasiDetik do
+        _G.VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+        task.wait(0.02) -- Kecepatan sinyal jepitan konstan agar anti-lepas otomatis
+    end
     
-    -- Lepaskan Tombol Keyboard
+    -- Setelah waktu habis baru tombol dilepas total (false)
     _G.VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
     task.wait(0.1) 
 end
 
--- Thread Pengatur Siklus Pengeluaran Skill
+-- Thread Siklus Perulangan Skill
 task.spawn(function()
     while true do
         pcall(function()
             if _G.Player.Character and _G.Player.Character:FindFirstChild("Humanoid") and _G.Player.Character.Humanoid.Health > 0 then
                 
-                if _G.MacroState.Z then tahanDanLepasKey(Enum.KeyCode.Z, _G.MacroState.HoldZ) end
-                if _G.MacroState.X then tahanDanLepasKey(Enum.KeyCode.X, _G.MacroState.HoldX) end
-                if _G.MacroState.C then tahanDanLepasKey(Enum.KeyCode.C, _G.MacroState.HoldC) end
-                if _G.MacroState.V then tahanDanLepasKey(Enum.KeyCode.V, _G.MacroState.HoldV) end
-                if _G.MacroState.F then tahanDanLepasKey(Enum.KeyCode.F, _G.MacroState.HoldF) end
+                if _G.MacroState.Z then paksaTahanDanLepasKey(Enum.KeyCode.Z, _G.MacroState.HoldZ) end
+                if _G.MacroState.X then paksaTahanDanLepasKey(Enum.KeyCode.X, _G.MacroState.HoldX) end
+                if _G.MacroState.C then paksaTahanDanLepasKey(Enum.KeyCode.C, _G.MacroState.HoldC) end
+                if _G.MacroState.V then paksaTahanDanLepasKey(Enum.KeyCode.V, _G.MacroState.HoldV) end
+                if _G.MacroState.F then paksaTahanDanLepasKey(Enum.KeyCode.F, _G.MacroState.HoldF) end
                 
             end
         end)
@@ -309,7 +320,7 @@ task.spawn(function()
     end
 end)
 
--- Thread Pengatur Pukulan Cepat (M1) di Sudut Piksel Paling Pojok Kiri Atas (0,0)
+-- Thread Pukulan M1 Sangat Pojok Kiri Atas Screen (0,0)
 task.spawn(function()
     while true do
         pcall(function()
