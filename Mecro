@@ -1,5 +1,5 @@
 -- =================================================================
--- BAGIAN 1: FIX BUG - PC SPOOFING & STORAGE CONFIG
+-- BAGIAN 1: SAKLAR DINAMIS (PC <-> MOBILE AUTO SWITCH) & MEMORI CONFIG
 -- =================================================================
 
 _G.UserInputService = game:GetService("UserInputService")
@@ -9,21 +9,32 @@ _G.Camera = workspace.CurrentCamera
 _G.Player = game.Players.LocalPlayer
 _G.CoreGui = game:GetService("CoreGui")
 
-_G.NamaFileConfig = "MacroConfig_BloxFruits_FixedHold.json"
+_G.NamaFileConfig = "MacroConfig_BloxFruits_HybridV3.json"
 
--- PC SPOOF FIX (Mengunci sistem input agar membaca keyboard fisik PC)
+-- Mengunci metatable Roblox agar bisa memanipulasi deteksi perangkat secara dinamis
 local metatable = getrawmetatable(game)
 if setreadonly then setreadonly(metatable, false) elseif make_writeable then make_writeable(metatable, false) end
 local oldIndex = metatable.__index
+
 metatable.__index = newcclosure(function(self, key)
     if self == _G.UserInputService then
-        if key == "KeyboardEnabled" or key == "MouseEnabled" then return true
-        elseif key == "TouchEnabled" then return false end
+        -- Mengecek apakah ada tombol makro yang sedang aktif menyala
+        local adaMakroAktif = _G.MacroState.AutoM1 or _G.MacroState.Z or _G.MacroState.X or _G.MacroState.C or _G.MacroState.V or _G.MacroState.F
+        
+        if adaMakroAktif then
+            -- Jika ada makro menyala, paksa game membaca input Komputer (PC)
+            if key == "KeyboardEnabled" or key == "MouseEnabled" then return true
+            elseif key == "TouchEnabled" then return false end
+        else
+            -- Jika semua saklar mati, kembalikan ke mode HP / Mobile total agar analog muncul
+            if key == "KeyboardEnabled" or key == "MouseEnabled" then return false
+            elseif key == "TouchEnabled" then return true end
+        end
     end
     return oldIndex(self, key)
 end)
 
--- VARIABEL DATA (STATE) AWAL
+-- Tabel pencatatan data status tombol dan durasi tahan
 _G.MacroState = {
     AutoM1 = false,
     Z = false, X = false, C = false, V = false, F = false,
@@ -33,8 +44,7 @@ _G.MacroState = {
 _G.simpanSetelanKeHP = function()
     pcall(function()
         if writefile then
-            local dataTeks = _G.HttpService:JSONEncode(_G.MacroState)
-            writefile(_G.NamaFileConfig, dataTeks)
+            writefile(_G.NamaFileConfig, _G.HttpService:JSONEncode(_G.MacroState))
         end
     end)
 end
@@ -42,8 +52,7 @@ end
 _G.muatSetelanDariHP = function()
     pcall(function()
         if isfile and readfile and isfile(_G.NamaFileConfig) then
-            local dataTeks = readfile(_G.NamaFileConfig)
-            local dataTabel = _G.HttpService:JSONDecode(dataTeks)
+            local dataTabel = _G.HttpService:JSONDecode(readfile(_G.NamaFileConfig))
             if dataTabel then
                 for key, value in pairs(dataTabel) do
                     if _G.MacroState[key] ~= nil then _G.MacroState[key] = value end
@@ -52,287 +61,205 @@ _G.muatSetelanDariHP = function()
         end
     end)
 end
-
 _G.muatSetelanDariHP()
 -- =================================================================
--- BAGIAN 2: FIX BUG - INDEPENDENT SLIDERS & MODERN SCROLL FRAME
+-- BAGIAN 2: ELEMEN UTAMA BINGKAI MENU UI, SCROLL, & MINIMIZE BUTTON
 -- =================================================================
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "BloxFruitsFixedUI"
-ScreenGui.Parent = _G.CoreGui:FindFirstChild("RobloxGui") or _G.CoreGui
+_G.ScreenGui = Instance.new("ScreenGui")
+_G.ScreenGui.Name = "BloxFruitsPremiumV3UI"
+_G.ScreenGui.Parent = _G.CoreGui:FindFirstChild("RobloxGui") or _G.CoreGui
 
--- 1. TOMBOL MINI BUKA/TUTUP (☰)
-local ToggleUIBtn = Instance.new("TextButton")
-ToggleUIBtn.Size = UDim2.new(0, 45, 0, 45)
-ToggleUIBtn.Position = UDim2.new(0.05, 0, 0.05, 0)
-ToggleUIBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-ToggleUIBtn.Text = "☰"
-ToggleUIBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleUIBtn.Font = Enum.Font.SourceSansBold
-ToggleUIBtn.TextSize = 22
-ToggleUIBtn.Active = true
-ToggleUIBtn.Draggable = true 
-ToggleUIBtn.Parent = ScreenGui
+-- Tombol buka/tutup menu (Kecil bulat biru, bisa digeser posisinya di layar)
+local ToggleUIBtn = Instance.new("TextButton", _G.ScreenGui)
+ToggleUIBtn.Size, ToggleUIBtn.Position = UDim2.new(0, 48, 0, 48), UDim2.new(0.05, 0, 0.05, 0)
+ToggleUIBtn.BackgroundColor3, ToggleUIBtn.Text, ToggleUIBtn.TextColor3 = Color3.fromRGB(0, 150, 255), "☰", Color3.fromRGB(255, 255, 255)
+ToggleUIBtn.Font, ToggleUIBtn.TextSize, ToggleUIBtn.Active, ToggleUIBtn.Draggable = Enum.Font.SourceSansBold, 24, true, true
 Instance.new("UICorner", ToggleUIBtn).CornerRadius = UDim.new(1, 0)
 
--- 2. PANEL UTAMA MENU
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 240, 0, 360)
-MainFrame.Position = UDim2.new(0.05, 0, 0.15, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Draggable = true 
-MainFrame.Visible = true 
-MainFrame.Parent = ScreenGui
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+-- Bingkai panel utama (Hanya pinggiran ini dan Title yang bisa digeser seluruhnya)
+_G.MainFrame = Instance.new("Frame", _G.ScreenGui)
+_G.MainFrame.Size, _G.MainFrame.Position = UDim2.new(0, 245, 0, 370), UDim2.new(0.05, 0, 0.15, 0)
+_G.MainFrame.BackgroundColor3, _G.MainFrame.BorderSizePixel, _G.MainFrame.Active, _G.MainFrame.Draggable = Color3.fromRGB(15, 15, 22), 0, true, true
+Instance.new("UICorner", _G.MainFrame).CornerRadius = UDim.new(0, 12)
 
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "FIXED MACRO PANEL"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-Title.TextSize = 12
-Title.Font = Enum.Font.SourceSansBold
-Title.Parent = MainFrame
-Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 10)
+local Title = Instance.new("TextLabel", _G.MainFrame)
+Title.Size, Title.Text, Title.TextColor3 = UDim2.new(1, 0, 0, 38), "PREMIUM HOLD MACRO V3", Color3.fromRGB(255, 255, 255)
+Title.BackgroundColor3, Title.TextSize, Title.Font = Color3.fromRGB(25, 25, 35), 12, Enum.Font.SourceSansBold
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 12)
 
-ToggleUIBtn.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
+ToggleUIBtn.MouseButton1Click:Connect(function() _G.MainFrame.Visible = not _G.MainFrame.Visible end)
 
--- 3. WADAH SCROLL BAR [I]
-local ScrollContainer = Instance.new("ScrollingFrame")
-ScrollContainer.Size = UDim2.new(1, -10, 1, -45)
-ScrollContainer.Position = UDim2.new(0, 5, 0, 40)
-ScrollContainer.BackgroundTransparency = 1
-ScrollContainer.BorderSizePixel = 0
-ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 480) 
-ScrollContainer.ScrollBarThickness = 5
-ScrollContainer.ScrollBarImageColor3 = Color3.fromRGB(0, 120, 255)
-ScrollContainer.Parent = MainFrame
+-- Wadah scroll bar (Dikunci: Tidak merusak pergerakan bingkai saat mengusap isi dalam) [I]
+_G.Scroll = Instance.new("ScrollingFrame", _G.MainFrame)
+_G.Scroll.Size, _G.Scroll.Position = UDim2.new(1, -12, 1, -48), UDim2.new(0, 6, 0, 42)
+_G.Scroll.BackgroundTransparency, _G.Scroll.BorderSizePixel, _G.Scroll.CanvasSize = 1, 0, UDim2.new(0, 0, 0, 460)
+_G.Scroll.ScrollBarThickness, _G.Scroll.ScrollBarImageColor3, _G.Scroll.Active = 4, Color3.fromRGB(0, 150, 255), false
+-- =================================================================
+-- BAGIAN 3: GENERATOR TOMBOL SKILL & SLIDER INDEPENDEN (ANTI BENTROK)
+-- =================================================================
 
--- FUNGSI LOKAL PEMBUAT SKILL (Mencegah Bug Slider Barengan) [I]
-local currentY = 5
-_G.buatKomponenSkill = function(labelSkill, keyAktif, keyHold, allSliders, allLabels, allNames, allKeys)
-    local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(0, 205, 0, 26)
-    Btn.Position = UDim2.new(0, 5, 0, currentY)
-    Btn.Font = Enum.Font.SourceSansBold
-    Btn.TextSize = 12
-    Btn.Parent = ScrollContainer
-    Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 5)
+_G.allUpdates = {}
+_G.listSkillName = {"Z", "X", "C", "V", "F"}
 
-    local function updateVisualTombol()
-        if _G.MacroState[keyAktif] then
-            Btn.Text = "Skill " .. labelSkill .. " : ON"
-            Btn.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
-            Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        else
-            Btn.Text = "Skill " .. labelSkill .. " : OFF"
-            Btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-            Btn.TextColor3 = Color3.fromRGB(180, 180, 180)
-        end
+_G.buatKomponenSkill = function(name, idx)
+    local curY = 38 + ((idx - 1) * 64)
+    local kAct, kHold = name, "Hold" .. name
+
+    local Btn = Instance.new("TextButton", _G.Scroll)
+    Btn.Size, Btn.Position = UDim2.new(0, 210, 0, 28), UDim2.new(0, 5, 0, curY)
+    Btn.Font, Btn.TextSize = Enum.Font.SourceSansBold, 12
+    Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 6)
+
+    local function updateVisual()
+        Btn.Text = _G.MacroState[kAct] and "Skill " .. name .. " : ACTIVE (ON)" or "Skill " .. name .. " : DISABLED (OFF)"
+        Btn.BackgroundColor3 = _G.MacroState[kAct] and Color3.fromRGB(30, 140, 60) or Color3.fromRGB(40, 40, 50)
+        Btn.TextColor3 = _G.MacroState[kAct] and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
     end
-    updateVisualTombol()
+    updateVisual()
+    table.insert(_G.allUpdates, updateVisual)
 
-    Btn.MouseButton1Click:Connect(function()
-        _G.MacroState[keyAktif] = not _G.MacroState[keyAktif]
-        updateVisualTombol()
-        _G.simpanSetelanKeHP()
-    end)
+    Btn.MouseButton1Click:Connect(function() _G.MacroState[kAct] = not _G.MacroState[kAct] updateVisual() _G.simpanSetelanKeHP() end)
 
-    local SliderFrame = Instance.new("Frame")
-    SliderFrame.Size = UDim2.new(0, 205, 0, 30)
-    SliderFrame.Position = UDim2.new(0, 5, 0, currentY + 28)
-    SliderFrame.BackgroundTransparency = 1
-    SliderFrame.Parent = ScrollContainer
+    local SFrame = Instance.new("Frame", _G.Scroll)
+    SFrame.Size, SFrame.Position, SFrame.BackgroundTransparency = UDim2.new(0, 210, 0, 30), UDim2.new(0, 5, 0, curY + 30), 1
 
-    local SliderLabel = Instance.new("TextLabel")
-    SliderLabel.Size = UDim2.new(1, 0, 0, 14)
-    SliderLabel.Text = "Durasi Tahan " .. labelSkill .. ": " .. string.format("%.1f", _G.MacroState[keyHold]) .. " Detik"
-    SliderLabel.TextColor3 = Color3.fromRGB(180, 180, 190)
-    SliderLabel.BackgroundTransparency = 1
-    SliderLabel.TextXAlignment = Enum.TextXAlignment.Left
-    SliderLabel.Font = Enum.Font.SourceSans
-    SliderLabel.TextSize = 11
-    SliderLabel.Parent = SliderFrame
+    local SLabel = Instance.new("TextLabel", SFrame)
+    SLabel.Size, SLabel.BackgroundTransparency, SLabel.TextXAlignment = UDim2.new(1, 0, 0, 14), 1, Enum.TextXAlignment.Left
+    SLabel.TextColor3, SLabel.Font, SLabel.TextSize = Color3.fromRGB(190, 190, 200), Enum.Font.SourceSans, 11
 
-    local SliderTrack = Instance.new("Frame")
-    SliderTrack.Size = UDim2.new(1, 0, 0, 4)
-    SliderTrack.Position = UDim2.new(0, 0, 0, 18)
-    SliderTrack.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-    SliderTrack.BorderSizePixel = 0
-    SliderTrack.Parent = SliderFrame
-    Instance.new("UICorner", SliderTrack).CornerRadius = UDim.new(0, 2)
+    local STrack = Instance.new("Frame", SFrame)
+    STrack.Size, STrack.Position, STrack.BackgroundColor3, STrack.BorderSizePixel = UDim2.new(1, 0, 0, 5), UDim2.new(0, 0, 0, 18), Color3.fromRGB(45, 45, 55), 0
+    Instance.new("UICorner", STrack).CornerRadius = UDim.new(0, 3)
 
-    local SliderButton = Instance.new("TextButton")
-    SliderButton.Size = UDim2.new(0, 12, 0, 12)
-    SliderButton.Position = UDim2.new((_G.MacroState[keyHold] - 1) / (40 - 1), -6, 0, -4)
-    SliderButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-    SliderButton.Text = ""
-    SliderButton.Parent = SliderTrack
-    Instance.new("UICorner", SliderButton).CornerRadius = UDim.new(1, 0)
+    local SBtn = Instance.new("TextButton", STrack)
+    SBtn.Size, SBtn.BackgroundColor3, SBtn.Text = UDim2.new(0, 14, 0, 14), Color3.fromRGB(0, 150, 255), ""
+    Instance.new("UICorner", SBtn).CornerRadius = UDim.new(1, 0)
 
-    -- SAKLAR LOKAL UNTUK SLIDER INI SAJA (Solusi Bug Geser Bersamaan) [I]
-    local geser_aktif_lokal = false
-    
-    SliderButton.MouseButton1Down:Connect(function() 
-        geser_aktif_lokal = true 
-    end)
-    
-    _G.UserInputService.InputEnded:Connect(function(input) 
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
-            geser_aktif_lokal = false 
-        end 
-    end)
+    local function refreshSlider()
+        local pct = (_G.MacroState[kHold] - 1) / (40 - 1)
+        SBtn.Position = UDim2.new(pct, -7, 0, -5)
+        SLabel.Text = "Durasi Tahan [" .. name .. "]: " .. string.format("%.1f", _G.MacroState[kHold]) .. " Detik"
+    end
+    refreshSlider()
+
+    -- Saklar lokal mandiri pengunci tarikan geser luar/jalur track slider saja
+    local isDragging = false
+    SBtn.MouseButton1Down:Connect(function() isDragging = true end)
+    _G.UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then isDragging = false end end)
 
     _G.UserInputService.InputChanged:Connect(function(input)
-        if geser_aktif_lokal and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            -- Pembatasan area klik geser hanya mendeteksi sumbu X di area luar/pinggiran track slider saja
-            local posisiRelatifX = input.Position.X - SliderTrack.AbsolutePosition.X
-            local persentase = math.clamp(posisiRelatifX / SliderTrack.AbsoluteSize.X, 0, 1)
-            local hasilWaktu = 1 + (persentase * (40 - 1))
-            hasilWaktu = math.round(hasilWaktu * 10) / 10
-            
-            _G.MacroState[keyHold] = hasilWaktu
-            SliderButton.Position = UDim2.new(persentase, -6, 0, -4)
-            SliderLabel.Text = "Durasi Tahan " .. labelSkill .. ": " .. string.format("%.1f", _G.MacroState[keyHold]) .. " Detik"
+        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local pct = math.clamp((input.Position.X - STrack.AbsolutePosition.X) / STrack.AbsoluteSize.X, 0, 1)
+            _G.MacroState[kHold] = math.round((1 + (pct * 39)) * 10) / 10
+            refreshSlider()
             _G.simpanSetelanKeHP()
         end
     end)
-
-    table.insert(allSliders, SliderButton)
-    table.insert(allLabels, SliderLabel)
-    table.insert(allNames, labelSkill)
-    table.insert(allKeys, keyHold)
-
-    currentY = currentY + 62
-    return updateVisualTombol
 end
 
--- Tombol Auto M1
-local BtnM1 = Instance.new("TextButton")
-BtnM1.Size = UDim2.new(0, 205, 0, 26)
-BtnM1.Position = UDim2.new(0, 5, 0, currentY)
-BtnM1.Font = Enum.Font.SourceSansBold
-BtnM1.TextSize = 12
-BtnM1.Parent = ScrollContainer
-Instance.new("UICorner", BtnM1).CornerRadius = UDim.new(0, 5)
+-- Menjalankan duplikasi otomatis untuk melahirkan seluruh tombol + slider
+for idx, name in ipairs(_G.listSkillName) do _G.buatKomponenSkill(name, idx) end
+-- =================================================================
+-- BAGIAN 4: MASTER BUTTONS CONTROL (M1 POJOK, MASS ON & OFF)
+-- =================================================================
 
-local function updateM1Visual()
-    if _G.MacroState.AutoM1 then
-        BtnM1.Text = "Auto Pukul (Sangat Pojok) : ON"
-        BtnM1.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
-        BtnM1.TextColor3 = Color3.fromRGB(255, 255, 255)
-    else
-        BtnM1.Text = "Auto Pukul (Sangat Pojok) : OFF"
-        BtnM1.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-        BtnM1.TextColor3 = Color3.fromRGB(180, 180, 180)
-    end
+local BtnM1 = Instance.new("TextButton", _G.Scroll)
+BtnM1.Size, BtnM1.Position = UDim2.new(0, 210, 0, 28), UDim2.new(0, 5, 0, 5)
+BtnM1.Font, BtnM1.TextSize = Enum.Font.SourceSansBold, 12
+Instance.new("UICorner", BtnM1).CornerRadius = UDim.new(0, 6)
+
+_G.upM1Visual = function()
+    BtnM1.Text = _G.MacroState.AutoM1 and "Auto Pukul (Ujung Pojok) : ON" or "Auto Pukul (Ujung Pojok) : OFF"
+    BtnM1.BackgroundColor3 = _G.MacroState.AutoM1 and Color3.fromRGB(30, 140, 60) or Color3.fromRGB(40, 40, 50)
+    BtnM1.TextColor3 = _G.MacroState.AutoM1 and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
 end
-updateM1Visual()
-BtnM1.MouseButton1Click:Connect(function() _G.MacroState.AutoM1 = not _G.MacroState.AutoM1 updateM1Visual() _G.simpanSetelanKeHP() end)
+_G.upM1Visual()
+BtnM1.MouseButton1Click:Connect(function() _G.MacroState.AutoM1 = not _G.MacroState.AutoM1 _G.upM1Visual() _G.simpanSetelanKeHP() end)
 
-currentY = currentY + 35
-
-local allSliders, allLabels, allNames, allKeys = {}, {}, {}, {}
-local upZ = _G.buatKomponenSkill("Z", "Z", "HoldZ", allSliders, allLabels, allNames, allKeys)
-local upX = _G.buatKomponenSkill("X", "X", "HoldX", allSliders, allLabels, allNames, allKeys)
-local upC = _G.buatKomponenSkill("C", "C", "HoldC", allSliders, allLabels, allNames, allKeys)
-local upV = _G.buatKomponenSkill("V", "V", "HoldV", allSliders, allLabels, allNames, allKeys)
-local upF = _G.buatKomponenSkill("F", "F", "HoldF", allSliders, allLabels, allNames, allKeys)
-local allUpdates = {upZ, upX, upC, upV, upF}
-
-local BtnOn = Instance.new("TextButton")
-BtnOn.Size = UDim2.new(0, 205, 0, 26)
-BtnOn.Position = UDim2.new(0, 5, 0, currentY + 5)
-BtnOn.Text = "OTOMATIS NYALAKAN ALL SKILL"
-BtnOn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
-BtnOn.TextColor3 = Color3.fromRGB(255, 255, 255)
-BtnOn.Font = Enum.Font.SourceSansBold
-BtnOn.TextSize = 11
-BtnOn.Parent = ScrollContainer
-Instance.new("UICorner", BtnOn).CornerRadius = UDim.new(0, 5)
+local startY = 38 + (#_G.listSkillName * 64)
+local BtnOn = Instance.new("TextButton", _G.Scroll)
+BtnOn.Size, BtnOn.Position, BtnOn.Text, BtnOn.BackgroundColor3 = UDim2.new(0, 210, 0, 28), UDim2.new(0, 5, 0, startY + 5), "⚡ OTOMATIS SAKLAR ALL ON", Color3.fromRGB(0, 100, 220)
+BtnOn.TextColor3, BtnOn.Font, BtnOn.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.SourceSansBold, 11
+Instance.new("UICorner", BtnOn).CornerRadius = UDim.new(0, 6)
 
 BtnOn.MouseButton1Click:Connect(function()
-    local keys = {"Z", "X", "C", "V", "F"}
-    for i, key in ipairs(keys) do _G.MacroState[key] = true allUpdates[i]() end
+    for i, k in ipairs(_G.listSkillName) do _G.MacroState[k] = true _G.allUpdates[i]() end
     _G.simpanSetelanKeHP()
 end)
 
-local BtnOff = Instance.new("TextButton")
-BtnOff.Size = UDim2.new(0, 205, 0, 26)
-BtnOff.Position = UDim2.new(0, 5, 0, currentY + 36)
-BtnOff.Text = "MATIKAN SEMUA SAKLAR"
-BtnOff.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-BtnOff.TextColor3 = Color3.fromRGB(255, 255, 255)
-BtnOff.Font = Enum.Font.SourceSansBold
-BtnOff.TextSize = 11
-BtnOff.Parent = ScrollContainer
-Instance.new("UICorner", BtnOff).CornerRadius = UDim.new(0, 5)
+local BtnOff = Instance.new("TextButton", _G.Scroll)
+BtnOff.Size, BtnOff.Position, BtnOff.Text, BtnOff.BackgroundColor3 = UDim2.new(0, 210, 0, 28), UDim2.new(0, 5, 0, startY + 38), "🛑 MATIKAN SEMUA SAKLAR", Color3.fromRGB(160, 35, 35)
+BtnOff.TextColor3, BtnOff.Font, BtnOff.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.SourceSansBold, 11
+Instance.new("UICorner", BtnOff).CornerRadius = UDim.new(0, 6)
 
 BtnOff.MouseButton1Click:Connect(function()
-    _G.MacroState.AutoM1 = false updateM1Visual()
-    local keys = {"Z", "X", "C", "V", "F"}
-    for i, key in ipairs(keys) do _G.MacroState[key] = false allUpdates[i]() end
+    _G.MacroState.AutoM1 = false _G.upM1Visual()
+    for i, k in ipairs(_G.listSkillName) do _G.MacroState[k] = false _G.allUpdates[i]() end
     _G.simpanSetelanKeHP()
 end)
-
-for i, key in ipairs(allKeys) do
-    local pct = (_G.MacroState[key] - 1) / (40 - 1)
-    allSliders[i].Position = UDim2.new(pct, -6, 0, -4)
-    allLabels[i].Text = "Durasi Tahan " .. allNames[i] .. ": " .. string.format("%.1f", _G.MacroState[key]) .. " Detik"
-end
 -- =================================================================
--- BAGIAN 3: FIX BUG - CONSTANT SIGNAL HOLD MECHANISM
+-- BAGIAN 5: REAL-TIME CHECKER LOOP & CONSTANT SIGNAL HOLD SYSTEM
 -- =================================================================
 
--- Fungsi memaksa tombol menahan dengan mengirim sinyal konstan
+-- Fungsi pemantau ketat: Selalu mengecek durasi tekan agar tombol terkunci menahan di server game
 local function paksaTahanDanLepasKey(keyCode, totalDurasiDetik)
-    local waktuMulai = tick()
+    local waktuMulaiMengecek = tick()
     
-    -- Mengirim sinyal tekan (true) berulang secara konstan agar tombol terkunci menahan [I]
-    while (tick() - waktuMulai) < totalDurasiDetik do
+    -- LOOP SELALU MENGECEK: Mengirim sinyal jepitan konstan secepat 15 milidetik agar anti-lepas [I]
+    while (tick() - waktuMulaiMengecek) < totalDurasiDetik do
         _G.VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-        task.wait(0.02) -- Kecepatan sinyal jepitan konstan agar anti-lepas otomatis
+        task.wait(0.015)
     end
     
-    -- Setelah waktu habis baru tombol dilepas total (false)
+    -- Melepas jepitan setelah durasi waktu habis
     _G.VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
-    task.wait(0.1) 
+    task.wait(0.12) 
 end
 
--- Thread Siklus Perulangan Skill
+-- Thread Utama: Menjalankan skill & Otomatis merefresh UI Analog HP jika semua OFF
 task.spawn(function()
+    local statusTerakhirPC = false
+    
     while true do
         pcall(function()
+            local adaMakroAktif = _G.MacroState.AutoM1 or _G.MacroState.Z or _G.MacroState.X or _G.MacroState.C or _G.MacroState.V or _G.MacroState.F
+            
+            -- Sistem Sinkronisasi: Memunculkan/menyembunyikan D-Pad kontrol HP secara dinamis [I]
+            if adaMakroAktif ~= statusTerakhirPC then
+                statusTerakhirPC = adaMakroAktif
+                _G.UserInputService.TouchEnabled = not adaMakroAktif
+                _G.UserInputService.KeyboardEnabled = adaMakroAktif
+            end
+
+            -- Selalu mengecek dan mengeksekusi durasi masing-masing slider secara berurutan [I]
             if _G.Player.Character and _G.Player.Character:FindFirstChild("Humanoid") and _G.Player.Character.Humanoid.Health > 0 then
-                
                 if _G.MacroState.Z then paksaTahanDanLepasKey(Enum.KeyCode.Z, _G.MacroState.HoldZ) end
                 if _G.MacroState.X then paksaTahanDanLepasKey(Enum.KeyCode.X, _G.MacroState.HoldX) end
                 if _G.MacroState.C then paksaTahanDanLepasKey(Enum.KeyCode.C, _G.MacroState.HoldC) end
                 if _G.MacroState.V then paksaTahanDanLepasKey(Enum.KeyCode.V, _G.MacroState.HoldV) end
                 if _G.MacroState.F then paksaTahanDanLepasKey(Enum.KeyCode.F, _G.MacroState.HoldF) end
-                
             end
         end)
-        task.wait(0.1) 
+        task.wait(0.05)
     end
 end)
 
--- Thread Pukulan M1 Sangat Pojok Kiri Atas Screen (0,0)
+-- Thread Loop Pukulan Cepat (M1) di Sudut Piksel Ujung Paling Kiri Atas Screen (0,0 Area)
 task.spawn(function()
     while true do
         pcall(function()
             if _G.MacroState.AutoM1 and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
-                local pojokX = _G.Camera.ViewportSize.X * 0.02
-                local pojokY = _G.Camera.ViewportSize.Y * 0.02
+                -- Koordinat mepet 2% dari total resolusi layar HP kamu dekat logo Roblox
+                local ujungX = _G.Camera.ViewportSize.X * 0.02
+                local ujungY = _G.Camera.ViewportSize.Y * 0.02
                 
-                _G.VirtualInputManager:SendMouseButtonEvent(pojokX, pojokY, 0, true, game, 1)
+                _G.VirtualInputManager:SendMouseButtonEvent(ujungX, ujungY, 0, true, game, 1)
                 task.wait(0.02)
-                _G.VirtualInputManager:SendMouseButtonEvent(pojokX, pojokY, 0, false, game, 1)
+                _G.VirtualInputManager:SendMouseButtonEvent(ujungX, ujungY, 0, false, game, 1)
             end
         end)
         task.wait(0.15)
     end
 end)
+
