@@ -9,9 +9,9 @@ _G.Camera = workspace.CurrentCamera
 _G.Player = game.Players.LocalPlayer
 _G.CoreGui = game:GetService("CoreGui")
 
-_G.NamaFileConfig = "MacroConfig_BloxFruits_MultiSlider.json"
+_G.NamaFileConfig = "MacroConfig_BloxFruits_ScrollHold.json"
 
--- 1. PC SPOOFING (Mengelabui Roblox agar membuka fitur Input Key PC)
+-- PC SPOOFING (Mengelabui Roblox agar mendeteksi Input Key PC)
 local metatable = getrawmetatable(game)
 if setreadonly then setreadonly(metatable, false) elseif make_writeable then make_writeable(metatable, false) end
 local oldIndex = metatable.__index
@@ -23,14 +23,13 @@ metatable.__index = newcclosure(function(self, key)
     return oldIndex(self, key)
 end)
 
--- 2. TENTUKAN VARIABEL SETELAN (STATE)
+-- VARIABEL CONFIG UTAMA
 _G.MacroState = {
     AutoM1 = false,
     Z = false, X = false, C = false, V = false, F = false,
-    DelayZ = 2.0, DelayX = 2.0, DelayC = 2.0, DelayV = 2.0, DelayF = 2.0
+    HoldZ = 1.0, HoldX = 1.0, HoldC = 1.0, HoldV = 1.0, HoldF = 1.0
 }
 
--- 3. FUNGSI SIMPAN & MUAT DATA DARI HP
 _G.simpanSetelanKeHP = function()
     pcall(function()
         if writefile then
@@ -56,51 +55,83 @@ end
 
 _G.muatSetelanDariHP()
 -- =================================================================
--- BAGIAN 2: PEMBUATAN ELEMEN DESAIN TAMPILAN MENU UI & SLIDER
+-- BAGIAN 2: UPGRADE UI - SCROLL BAR & TOMBOL BUKA/TUTUP (MINIMIZE)
 -- =================================================================
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "BloxFruitsMultiSliderUI"
+ScreenGui.Name = "BloxFruitsModernUI"
 ScreenGui.Parent = _G.CoreGui:FindFirstChild("RobloxGui") or _G.CoreGui
 
+-- 1. TOMBOL BUKA/TUTUP (Kecil di layar, bisa digeser-geser)
+local ToggleUIBtn = Instance.new("TextButton")
+ToggleUIBtn.Size = UDim2.new(0, 45, 0, 45)
+ToggleUIBtn.Position = UDim2.new(0.05, 0, 0.05, 0)
+ToggleUIBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+ToggleUIBtn.Text = "☰"
+ToggleUIBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleUIBtn.Font = Enum.Font.SourceSansBold
+ToggleUIBtn.TextSize = 22
+ToggleUIBtn.Active = true
+ToggleUIBtn.Draggable = true -- Tombol buka/tutup bisa dipindah posisinya
+ToggleUIBtn.Parent = ScreenGui
+Instance.new("UICorner", ToggleUIBtn).CornerRadius = UDim.new(1, 0) -- Bulat sempurna
+
+-- 2. PANEL UTAMA FRAME
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 240, 0, 560)
-MainFrame.Position = UDim2.new(0.05, 0, 0.10, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+MainFrame.Size = UDim2.new(0, 240, 0, 360) -- Ukuran kotak lebih ringkas karena pakai scroll
+MainFrame.Position = UDim2.new(0.05, 0, 0.15, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true 
+MainFrame.Visible = true -- Default terbuka saat start
 MainFrame.Parent = ScreenGui
-
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "MULTI-SLIDER MACRO UI"
+Title.Text = "HOLD SKILL MACRO (SCROLL)"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-Title.TextSize = 13
+Title.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+Title.TextSize = 12
 Title.Font = Enum.Font.SourceSansBold
 Title.Parent = MainFrame
 Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 10)
 
-local currentY = 45
-_G.buatKomponenSkill = function(labelSkill, keyAktif, keyDelay, allSliders, allLabels, allNames, allKeys)
+-- Logika fungsi klik Buka / Tutup UI
+ToggleUIBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
+-- 3. WADAH SCROLL BAR (SCROLLING FRAME) [I]
+local ScrollContainer = Instance.new("ScrollingFrame")
+ScrollContainer.Size = UDim2.new(1, -10, 1, -45)
+ScrollContainer.Position = UDim2.new(0, 5, 0, 40)
+ScrollContainer.BackgroundTransparency = 1
+ScrollContainer.BorderSizePixel = 0
+ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 480) -- Ukuran area dalam untuk di-scroll [I]
+ScrollContainer.ScrollBarThickness = 5
+ScrollContainer.ScrollBarImageColor3 = Color3.fromRGB(0, 120, 255)
+ScrollContainer.Parent = MainFrame
+
+-- Fungsi Pembantu Komponen di dalam Scroll
+local currentY = 5
+_G.buatKomponenSkill = function(labelSkill, keyAktif, keyHold, allSliders, allLabels, allNames, allKeys)
     local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(0, 210, 0, 26)
-    Btn.Position = UDim2.new(0, 15, 0, currentY)
+    Btn.Size = UDim2.new(0, 205, 0, 26)
+    Btn.Position = UDim2.new(0, 5, 0, currentY)
     Btn.Font = Enum.Font.SourceSansBold
     Btn.TextSize = 12
-    Btn.Parent = MainFrame
+    Btn.Parent = ScrollContainer
     Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 5)
 
     local function updateVisualTombol()
         if _G.MacroState[keyAktif] then
-            Btn.Text = "Gunakan Skill " .. labelSkill .. " : ON"
+            Btn.Text = "Skill " .. labelSkill .. " : ON"
             Btn.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
             Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         else
-            Btn.Text = "Gunakan Skill " .. labelSkill .. " : OFF"
+            Btn.Text = "Skill " .. labelSkill .. " : OFF"
             Btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
             Btn.TextColor3 = Color3.fromRGB(180, 180, 180)
         end
@@ -114,14 +145,14 @@ _G.buatKomponenSkill = function(labelSkill, keyAktif, keyDelay, allSliders, allL
     end)
 
     local SliderFrame = Instance.new("Frame")
-    SliderFrame.Size = UDim2.new(0, 210, 0, 30)
-    SliderFrame.Position = UDim2.new(0, 15, 0, currentY + 28)
+    SliderFrame.Size = UDim2.new(0, 205, 0, 30)
+    SliderFrame.Position = UDim2.new(0, 5, 0, currentY + 28)
     SliderFrame.BackgroundTransparency = 1
-    SliderFrame.Parent = MainFrame
+    SliderFrame.Parent = ScrollContainer
 
     local SliderLabel = Instance.new("TextLabel")
     SliderLabel.Size = UDim2.new(1, 0, 0, 14)
-    SliderLabel.Text = "Jeda " .. labelSkill .. ": " .. string.format("%.1f", _G.MacroState[keyDelay]) .. " Detik"
+    SliderLabel.Text = "Durasi Tahan " .. labelSkill .. ": " .. string.format("%.1f", _G.MacroState[keyHold]) .. " Detik"
     SliderLabel.TextColor3 = Color3.fromRGB(180, 180, 190)
     SliderLabel.BackgroundTransparency = 1
     SliderLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -139,7 +170,7 @@ _G.buatKomponenSkill = function(labelSkill, keyAktif, keyDelay, allSliders, allL
 
     local SliderButton = Instance.new("TextButton")
     SliderButton.Size = UDim2.new(0, 12, 0, 12)
-    SliderButton.Position = UDim2.new((_G.MacroState[keyDelay] - 1) / (40 - 1), -6, 0, -4)
+    SliderButton.Position = UDim2.new((_G.MacroState[keyHold] - 1) / (40 - 1), -6, 0, -4)
     SliderButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
     SliderButton.Text = ""
     SliderButton.Parent = SliderTrack
@@ -156,9 +187,9 @@ _G.buatKomponenSkill = function(labelSkill, keyAktif, keyDelay, allSliders, allL
             local hasilWaktu = 1 + (persentase * (40 - 1))
             hasilWaktu = math.round(hasilWaktu * 10) / 10
             
-            _G.MacroState[keyDelay] = hasilWaktu
+            _G.MacroState[keyHold] = hasilWaktu
             SliderButton.Position = UDim2.new(persentase, -6, 0, -4)
-            SliderLabel.Text = "Jeda " .. labelSkill .. ": " .. string.format("%.1f", _G.MacroState[keyDelay]) .. " Detik"
+            SliderLabel.Text = "Durasi Tahan " .. labelSkill .. ": " .. string.format("%.1f", _G.MacroState[keyHold]) .. " Detik"
             _G.simpanSetelanKeHP()
         end
     end)
@@ -166,18 +197,18 @@ _G.buatKomponenSkill = function(labelSkill, keyAktif, keyDelay, allSliders, allL
     table.insert(allSliders, SliderButton)
     table.insert(allLabels, SliderLabel)
     table.insert(allNames, labelSkill)
-    table.insert(allKeys, keyDelay)
+    table.insert(allKeys, keyHold)
 
     currentY = currentY + 62
     return updateVisualTombol
 end
 
 local BtnM1 = Instance.new("TextButton")
-BtnM1.Size = UDim2.new(0, 210, 0, 26)
-BtnM1.Position = UDim2.new(0, 15, 0, currentY)
+BtnM1.Size = UDim2.new(0, 205, 0, 26)
+BtnM1.Position = UDim2.new(0, 5, 0, currentY)
 BtnM1.Font = Enum.Font.SourceSansBold
 BtnM1.TextSize = 12
-BtnM1.Parent = MainFrame
+BtnM1.Parent = ScrollContainer
 Instance.new("UICorner", BtnM1).CornerRadius = UDim.new(0, 5)
 
 local function updateM1Visual()
@@ -197,22 +228,22 @@ BtnM1.MouseButton1Click:Connect(function() _G.MacroState.AutoM1 = not _G.MacroSt
 currentY = currentY + 35
 
 local allSliders, allLabels, allNames, allKeys = {}, {}, {}, {}
-local upZ = _G.buatKomponenSkill("Z", "Z", "DelayZ", allSliders, allLabels, allNames, allKeys)
-local upX = _G.buatKomponenSkill("X", "X", "DelayX", allSliders, allLabels, allNames, allKeys)
-local upC = _G.buatKomponenSkill("C", "C", "DelayC", allSliders, allLabels, allNames, allKeys)
-local upV = _G.buatKomponenSkill("V", "V", "DelayV", allSliders, allLabels, allNames, allKeys)
-local upF = _G.buatKomponenSkill("F", "F", "DelayF", allSliders, allLabels, allNames, allKeys)
+local upZ = _G.buatKomponenSkill("Z", "Z", "HoldZ", allSliders, allLabels, allNames, allKeys)
+local upX = _G.buatKomponenSkill("X", "X", "HoldX", allSliders, allLabels, allNames, allKeys)
+local upC = _G.buatKomponenSkill("C", "C", "HoldC", allSliders, allLabels, allNames, allKeys)
+local upV = _G.buatKomponenSkill("V", "V", "HoldV", allSliders, allLabels, allNames, allKeys)
+local upF = _G.buatKomponenSkill("F", "F", "HoldF", allSliders, allLabels, allNames, allKeys)
 local allUpdates = {upZ, upX, upC, upV, upF}
 
 local BtnOn = Instance.new("TextButton")
-BtnOn.Size = UDim2.new(0, 210, 0, 26)
-BtnOn.Position = UDim2.new(0, 15, 0, currentY + 5)
+BtnOn.Size = UDim2.new(0, 205, 0, 26)
+BtnOn.Position = UDim2.new(0, 5, 0, currentY + 5)
 BtnOn.Text = "OTOMATIS NYALAKAN ALL SKILL"
 BtnOn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
 BtnOn.TextColor3 = Color3.fromRGB(255, 255, 255)
 BtnOn.Font = Enum.Font.SourceSansBold
-BtnOn.TextSize = 12
-BtnOn.Parent = MainFrame
+BtnOn.TextSize = 11
+BtnOn.Parent = ScrollContainer
 Instance.new("UICorner", BtnOn).CornerRadius = UDim.new(0, 5)
 
 BtnOn.MouseButton1Click:Connect(function()
@@ -222,14 +253,14 @@ BtnOn.MouseButton1Click:Connect(function()
 end)
 
 local BtnOff = Instance.new("TextButton")
-BtnOff.Size = UDim2.new(0, 210, 0, 26)
-BtnOff.Position = UDim2.new(0, 15, 0, currentY + 36)
+BtnOff.Size = UDim2.new(0, 205, 0, 26)
+BtnOff.Position = UDim2.new(0, 5, 0, currentY + 36)
 BtnOff.Text = "MATIKAN SEMUA SAKLAR"
 BtnOff.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 BtnOff.TextColor3 = Color3.fromRGB(255, 255, 255)
 BtnOff.Font = Enum.Font.SourceSansBold
-BtnOff.TextSize = 12
-BtnOff.Parent = MainFrame
+BtnOff.TextSize = 11
+BtnOff.Parent = ScrollContainer
 Instance.new("UICorner", BtnOff).CornerRadius = UDim.new(0, 5)
 
 BtnOff.MouseButton1Click:Connect(function()
@@ -242,16 +273,22 @@ end)
 for i, key in ipairs(allKeys) do
     local pct = (_G.MacroState[key] - 1) / (40 - 1)
     allSliders[i].Position = UDim2.new(pct, -6, 0, -4)
-    allLabels[i].Text = "Jeda " .. allNames[i] .. ": " .. string.format("%.1f", _G.MacroState[key]) .. " Detik"
+    allLabels[i].Text = "Durasi Tahan " .. allNames[i] .. ": " .. string.format("%.1f", _G.MacroState[key]) .. " Detik"
 end
 -- =================================================================
--- BAGIAN 3: SISTEM UTAMA LOOPING SERANGAN & KLIK SANGAT POJOK
+-- BAGIAN 3: LOGIKA TAHAN TOMBOL SKILL (HOLD MECHANISM) & M1 POJOK
 -- =================================================================
 
-local function kirimInputKeyPC(keyCode)
+local function tahanDanLepasKey(keyCode, durasiTahan)
+    -- Mulai Tahan Tombol Keyboard Internal
     _G.VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-    task.wait(0.05)
+    
+    -- Ditahan sesuai durasi detik yang kamu atur pada Slider UI [I]
+    task.wait(durasiTahan)
+    
+    -- Lepaskan Tombol Keyboard
     _G.VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+    task.wait(0.1) 
 end
 
 -- Thread Pengatur Siklus Pengeluaran Skill
@@ -259,15 +296,16 @@ task.spawn(function()
     while true do
         pcall(function()
             if _G.Player.Character and _G.Player.Character:FindFirstChild("Humanoid") and _G.Player.Character.Humanoid.Health > 0 then
-                -- Menjalankan antrian skill bergantian berdasarkan nilai data slider-nya masing-masing [I]
-                if _G.MacroState.Z then kirimInputKeyPC(Enum.KeyCode.Z) task.wait(_G.MacroState.DelayZ) end
-                if _G.MacroState.X then kirimInputKeyPC(Enum.KeyCode.X) task.wait(_G.MacroState.DelayX) end
-                if _G.MacroState.C then kirimInputKeyPC(Enum.KeyCode.C) task.wait(_G.MacroState.DelayC) end
-                if _G.MacroState.V then kirimInputKeyPC(Enum.KeyCode.V) task.wait(_G.MacroState.DelayV) end
-                if _G.MacroState.F then kirimInputKeyPC(Enum.KeyCode.F) task.wait(_G.MacroState.DelayF) end
+                
+                if _G.MacroState.Z then tahanDanLepasKey(Enum.KeyCode.Z, _G.MacroState.HoldZ) end
+                if _G.MacroState.X then tahanDanLepasKey(Enum.KeyCode.X, _G.MacroState.HoldX) end
+                if _G.MacroState.C then tahanDanLepasKey(Enum.KeyCode.C, _G.MacroState.HoldC) end
+                if _G.MacroState.V then tahanDanLepasKey(Enum.KeyCode.V, _G.MacroState.HoldV) end
+                if _G.MacroState.F then tahanDanLepasKey(Enum.KeyCode.F, _G.MacroState.HoldF) end
+                
             end
         end)
-        task.wait(0.1)
+        task.wait(0.1) 
     end
 end)
 
@@ -276,7 +314,6 @@ task.spawn(function()
     while true do
         pcall(function()
             if _G.MacroState.AutoM1 and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
-                -- Target koordinat 2% mepet ujung layar atas dekat tombol keluar Roblox
                 local pojokX = _G.Camera.ViewportSize.X * 0.02
                 local pojokY = _G.Camera.ViewportSize.Y * 0.02
                 
@@ -285,7 +322,6 @@ task.spawn(function()
                 _G.VirtualInputManager:SendMouseButtonEvent(pojokX, pojokY, 0, false, game, 1)
             end
         end)
-        task.wait(0.15) -- Kecepatan pukulan dasar Buddha
+        task.wait(0.15)
     end
 end)
-
