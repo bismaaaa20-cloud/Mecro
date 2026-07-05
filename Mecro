@@ -199,49 +199,95 @@ BtnOff.MouseButton1Click:Connect(function()
     _G.simpanSetelanKeHP()
 end)
 -- =================================================================
--- BAGIAN 5: REAL-TIME CHECKER LOOP & CONSTANT SIGNAL HOLD SYSTEM
+-- BAGIAN 5: REAL-TIME INDEPENDENT HOLD & MULTI-THREADING SYSTEM
 -- =================================================================
 
--- Fungsi pemantau ketat: Selalu mengecek durasi tekan agar tombol terkunci menahan di server game
-local function paksaTahanDanLepasKey(keyCode, totalDurasiDetik)
+-- Fungsi pemantau ketat: Mengirim sinyal jepitan konstan secepat 15 milidetik agar anti-lepas
+local function jalankanMekanismeTahanPasti(keyCode, totalDurasiDetik)
     local waktuMulaiMengecek = tick()
-    
-    -- LOOP SELALU MENGECEK: Mengirim sinyal jepitan konstan secepat 15 milidetik agar anti-lepas [I]
     while (tick() - waktuMulaiMengecek) < totalDurasiDetik do
         _G.VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
         task.wait(0.015)
     end
-    
-    -- Melepas jepitan setelah durasi waktu habis
     _G.VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
-    task.wait(0.12) 
 end
 
--- Thread Utama: Menjalankan skill & Otomatis merefresh UI Analog HP jika semua OFF
+-- Thread Pengatur Sinkronisasi UI Analog HP (Otomatis memulihkan kontrol jika semua OFF)
 task.spawn(function()
     local statusTerakhirPC = false
-    
     while true do
         pcall(function()
             local adaMakroAktif = _G.MacroState.AutoM1 or _G.MacroState.Z or _G.MacroState.X or _G.MacroState.C or _G.MacroState.V or _G.MacroState.F
-            
-            -- Sistem Sinkronisasi: Memunculkan/menyembunyikan D-Pad kontrol HP secara dinamis [I]
             if adaMakroAktif ~= statusTerakhirPC then
                 statusTerakhirPC = adaMakroAktif
                 _G.UserInputService.TouchEnabled = not adaMakroAktif
                 _G.UserInputService.KeyboardEnabled = adaMakroAktif
             end
+        end)
+        task.wait(0.1)
+    end
+end)
 
-            -- Selalu mengecek dan mengeksekusi durasi masing-masing slider secara berurutan [I]
-            if _G.Player.Character and _G.Player.Character:FindFirstChild("Humanoid") and _G.Player.Character.Humanoid.Health > 0 then
-                if _G.MacroState.Z then paksaTahanDanLepasKey(Enum.KeyCode.Z, _G.MacroState.HoldZ) end
-                if _G.MacroState.X then paksaTahanDanLepasKey(Enum.KeyCode.X, _G.MacroState.HoldX) end
-                if _G.MacroState.C then paksaTahanDanLepasKey(Enum.KeyCode.C, _G.MacroState.HoldC) end
-                if _G.MacroState.V then paksaTahanDanLepasKey(Enum.KeyCode.V, _G.MacroState.HoldV) end
-                if _G.MacroState.F then paksaTahanDanLepasKey(Enum.KeyCode.F, _G.MacroState.HoldF) end
+-- MULTI-THREADING: Setiap tombol mengecek dan menekan jalurnya masing-masing secara bersamaan
+-- Jika satu tombol sedang cooldown atau sedang menahan, tombol lain TETAP AKAN BERJALAN [I]
+
+-- Jalur Skill Z
+task.spawn(function()
+    while true do
+        pcall(function()
+            if _G.MacroState.Z and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
+                jalankanMekanismeTahanPasti(Enum.KeyCode.Z, _G.MacroState.HoldZ)
             end
         end)
-        task.wait(0.05)
+        task.wait(0.1)
+    end
+end)
+
+-- Jalur Skill X
+task.spawn(function()
+    while true do
+        pcall(function()
+            if _G.MacroState.X and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
+                jalankanMekanismeTahanPasti(Enum.KeyCode.X, _G.MacroState.HoldX)
+            end
+        end)
+        task.wait(0.1)
+    end
+end)
+
+-- Jalur Skill C
+task.spawn(function()
+    while true do
+        pcall(function()
+            if _G.MacroState.C and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
+                jalankanMekanismeTahanPasti(Enum.KeyCode.C, _G.MacroState.HoldC)
+            end
+        end)
+        task.wait(0.1)
+    end
+end)
+
+-- Jalur Skill V
+task.spawn(function()
+    while true do
+        pcall(function()
+            if _G.MacroState.V and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
+                jalankanMekanismeTahanPasti(Enum.KeyCode.V, _G.MacroState.HoldV)
+            end
+        end)
+        task.wait(0.1)
+    end
+end)
+
+-- Jalur Skill F
+task.spawn(function()
+    while true do
+        pcall(function()
+            if _G.MacroState.F and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
+                jalankanMekanismeTahanPasti(Enum.KeyCode.F, _G.MacroState.HoldF)
+            end
+        end)
+        task.wait(0.1)
     end
 end)
 
@@ -250,7 +296,6 @@ task.spawn(function()
     while true do
         pcall(function()
             if _G.MacroState.AutoM1 and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
-                -- Koordinat mepet 2% dari total resolusi layar HP kamu dekat logo Roblox
                 local ujungX = _G.Camera.ViewportSize.X * 0.02
                 local ujungY = _G.Camera.ViewportSize.Y * 0.02
                 
@@ -262,4 +307,3 @@ task.spawn(function()
         task.wait(0.15)
     end
 end)
-
