@@ -1,55 +1,38 @@
 -- ================================================================
--- [ROBLOX EXECUTOR] FULL PACK v4.0 — ALL MODULES MERGED
--- ┌─ Module A  : FPS Booster (lighting, render, terrain, texture)
--- ├─ Module A+ : VFX Optimizer (world-space visual, skip UI)
--- ├─ Module B  : BackpackEquipBest     loop  (FireServer)   → 30s
--- ├─ Module C  : RebirthPurchase       loop  (InvokeServer) → 30s
--- ├─ Module D  : IndexClaimAllRewards  loop  (InvokeServer) → 30s
--- ├─ Module E  : QuestClaimAll         loop  (InvokeServer) → 30s
--- ├─ Module F  : ClaimPlaytimeReward   loop  (1→15 seq)     → 1s/tier
--- └─ Module G  : RebirthGetState       loop  (InvokeServer) → 60s
+-- [ROBLOX EXECUTOR] FULL PACK v3.0 — ALL MODULES MERGED
+-- ┌─ Module A : FPS Booster (lighting, render, terrain, texture)
+-- ├─ Module B : BackpackEquipBest     loop  (FireServer)    → 30s
+-- ├─ Module C : RebirthPurchase       loop  (InvokeServer)  → 30s
+-- ├─ Module D : IndexClaimAllRewards  loop  (InvokeServer)  → 30s
+-- ├─ Module E : QuestClaimAll         loop  (InvokeServer)  → 30s
+-- ├─ Module F : ClaimPlaytimeReward   loop  (1→15 seq)      → 1s/tier
+-- └─ Module G : RebirthGetState       loop  (InvokeServer)  → 60s
 --
 -- Runtime   : Luau, Executor context
 -- Platform  : Windows / Android Roblox Client
--- VFX Note  : Reduce (bukan destroy) — game masih ada visual, lebih ringan
---             UI (ScreenGui, Frame, dll) tidak disentuh sama sekali
 -- ================================================================
 
--- ─── Services ────────────────────────────────────────────────────
 local Lighting          = game:GetService("Lighting")
 local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players           = game:GetService("Players")
-local CoreGui           = game:GetService("CoreGui")
 
 -- ─── Master Config ───────────────────────────────────────────────
 local CFG = {
-    -- [ FPS Booster — Module A ]
-    STRIP_TEXTURES        = true,   -- Material → SmoothPlastic, hide Decal/Texture
-    STRIP_SHADOWS         = true,   -- CastShadow = false semua BasePart
-    STRIP_EFFECTS         = false,  -- destroy Fire/Smoke/Particle (off = pakai A+ aja)
-    CHUNK_SIZE            = 150,    -- instance diproses per frame saat init scan
-
-    -- [ VFX Optimizer — Module A+ ]
-    VFX_OPTIMIZE          = true,   -- aktifkan VFX optimizer
-    VFX_PARTICLE_RATE_CAP = 3,      -- max ParticleEmitter.Rate (default game bisa 50+)
-    VFX_LIFETIME_MULT     = 0.4,    -- lifetime particle × 0.4 (lebih cepet ilang)
-    VFX_SPEED_MULT        = 0.5,    -- speed particle × 0.5
-    VFX_BEAM_WIDTH_MULT   = 0.3,    -- beam width × 0.3 (lebih tipis)
-    VFX_BEAM_SEG_MIN      = 1,      -- minimum segment beam
-    VFX_TRAIL_LENGTH_MULT = 0.3,    -- trail MaxLength × 0.3
-    VFX_FIRE_SIZE_MULT    = 0.4,    -- fire Size × 0.4
-    VFX_SMOKE_DENSITY_MULT= 0.3,    -- smoke Density × 0.3
+    -- [ FPS Booster ]
+    STRIP_TEXTURES      = true,
+    STRIP_SHADOWS       = true,
+    STRIP_EFFECTS       = false,
+    CHUNK_SIZE          = 150,
 
     -- [ Auto Loops ]
-    LOOP_DELAY            = 30,     -- Module B / C / D / E → 30 detik
-    PLAYTIME_DELAY        = 1,      -- Module F antar tier   → 1 detik
-    PLAYTIME_CYCLE_WAIT   = 2,      -- Module F jeda cycle   → 2 detik
-    REBIRTH_STATE_DELAY   = 60,     -- Module G              → 60 detik
+    LOOP_DELAY          = 30,  -- Module B / C / D / E → 30 detik
+    PLAYTIME_DELAY      = 1,   -- Module F antar tier   → 1 detik
+    PLAYTIME_CYCLE_WAIT = 2,   -- Module F jeda cycle   → 2 detik
+    REBIRTH_STATE_DELAY = 60,  -- Module G              → 1 menit
 }
 
 -- ================================================================
--- MODULE A · FPS BOOSTER (Lighting + Render + Terrain + Texture)
+-- MODULE A · FPS BOOSTER
 -- ================================================================
 
 local POST_FX = {
@@ -115,8 +98,8 @@ local EFFECT_CLASSES = { "Fire", "Smoke", "Sparkles", "ParticleEmitter", "Trail"
 
 local function processInstance(obj)
     if obj:IsA("BasePart") then
-        if CFG.STRIP_SHADOWS  then pcall(function() obj.CastShadow     = false                           end) end
-        if CFG.STRIP_TEXTURES then pcall(function() obj.Material       = Enum.Material.SmoothPlastic     end) end
+        if CFG.STRIP_SHADOWS  then pcall(function() obj.CastShadow    = false                           end) end
+        if CFG.STRIP_TEXTURES then pcall(function() obj.Material      = Enum.Material.SmoothPlastic     end) end
         if CFG.STRIP_TEXTURES then pcall(function() obj.RenderFidelity = Enum.RenderFidelity.Performance end) end
         return
     end
@@ -166,149 +149,6 @@ task.spawn(function()
 end)
 
 -- ================================================================
--- MODULE A+ · VFX OPTIMIZER
--- Strategy : REDUCE bukan DESTROY — visual masih ada tapi ringan
--- Skip     : semua UI (PlayerGui, CoreGui, GuiObject, LayerCollector)
--- Target   : ParticleEmitter, Beam, Trail, Fire, Smoke, Sparkles
---            SpecialMesh — semua world-space only
---
--- Kenapa reduce bukan destroy:
---   Game masih keliatan ada efeknya (explosion, aura, buff glow)
---   tapi GPU draw call-nya jauh lebih sedikit karena:
---   - Particle lifetime pendek → cepet hilang dari scene
---   - Particle rate rendah    → jumlah partikel aktif di scene minimal
---   - Beam width tipis        → fewer pixel fill per draw call
---   - Trail pendek            → shorter geometry strip per frame
--- ================================================================
-
-local function isUIObject(obj)
-    -- Cek parent hierarchy — kalau ada di UI space, hard skip
-    local lp = Players.LocalPlayer
-    if lp then
-        local playerGui = lp:FindFirstChild("PlayerGui")
-        if playerGui and obj:IsDescendantOf(playerGui) then return true end
-    end
-    if obj:IsDescendantOf(CoreGui) then return true end
-    -- Cek class langsung — GuiObject = semua UI element 2D
-    -- LayerCollector = ScreenGui, BillboardGui, SurfaceGui container
-    return  obj:IsA("GuiObject")      or
-            obj:IsA("GuiBase2d")      or
-            obj:IsA("LayerCollector") or
-            obj:IsA("UIBase")
-end
-
-local function optimizeVFX(obj)
-    if not CFG.VFX_OPTIMIZE then return end
-    if isUIObject(obj) then return end  -- hard skip semua UI
-
-    -- ── ParticleEmitter ──────────────────────────────────────────
-    -- Rate di-cap biar jumlah partikel aktif di scene minimal
-    -- Lifetime diperpendek biar partikel cepet ilang dari GPU
-    if obj:IsA("ParticleEmitter") then
-        pcall(function()
-            obj.Rate = math.min(obj.Rate, CFG.VFX_PARTICLE_RATE_CAP)
-        end)
-        pcall(function()
-            local mn = obj.Lifetime.Min * CFG.VFX_LIFETIME_MULT
-            local mx = obj.Lifetime.Max * CFG.VFX_LIFETIME_MULT
-            obj.Lifetime = NumberRange.new(math.max(mn, 0.05), math.max(mx, 0.1))
-        end)
-        pcall(function()
-            local mn = obj.Speed.Min * CFG.VFX_SPEED_MULT
-            local mx = obj.Speed.Max * CFG.VFX_SPEED_MULT
-            obj.Speed = NumberRange.new(math.max(mn, 0), math.max(mx, 0.1))
-        end)
-        return
-    end
-
-    -- ── Beam ─────────────────────────────────────────────────────
-    -- Width dikurangin → less pixel fill per draw call
-    -- Segments dikurangin → geometry strip lebih simple
-    if obj:IsA("Beam") then
-        pcall(function()
-            obj.Width0    = math.max(obj.Width0   * CFG.VFX_BEAM_WIDTH_MULT, 0.05)
-            obj.Width1    = math.max(obj.Width1   * CFG.VFX_BEAM_WIDTH_MULT, 0.05)
-            obj.Segments  = math.max(math.floor(obj.Segments * 0.3), CFG.VFX_BEAM_SEG_MIN)
-        end)
-        return
-    end
-
-    -- ── Trail ────────────────────────────────────────────────────
-    -- MaxLength diperkecil → geometry strip pendek = lebih ringan
-    if obj:IsA("Trail") then
-        pcall(function()
-            obj.MaxLength = math.max(obj.MaxLength * CFG.VFX_TRAIL_LENGTH_MULT, 0.05)
-            obj.MinLength = math.max(obj.MinLength * 0.1, 0.01)
-        end)
-        return
-    end
-
-    -- ── Fire ─────────────────────────────────────────────────────
-    -- Size dan Heat dikurangin → particle emitter internal lebih kecil
-    if obj:IsA("Fire") then
-        pcall(function()
-            obj.Size = math.max(obj.Size * CFG.VFX_FIRE_SIZE_MULT, 1)
-            obj.Heat = math.max(obj.Heat * CFG.VFX_FIRE_SIZE_MULT, 1)
-        end)
-        return
-    end
-
-    -- ── Smoke ────────────────────────────────────────────────────
-    -- Density dikurangin → fewer smoke particles rendered
-    if obj:IsA("Smoke") then
-        pcall(function()
-            obj.Density = math.max(obj.Density * CFG.VFX_SMOKE_DENSITY_MULT, 0.05)
-            obj.Size    = math.max(obj.Size    * CFG.VFX_SMOKE_DENSITY_MULT, 0.1)
-        end)
-        return
-    end
-
-    -- ── Sparkles ─────────────────────────────────────────────────
-    -- Ga ada Rate property → bikin invisible via warna hitam
-    -- Masih "ada" tapi zero contribution ke pixel output
-    if obj:IsA("Sparkles") then
-        pcall(function()
-            obj.SparkleColor = Color3.new(0, 0, 0)
-        end)
-        return
-    end
-
-    -- ── SpecialMesh ──────────────────────────────────────────────
-    -- Flatten complex mesh ke Brick untuk non-Head parts
-    -- Brick = simplest geometry = 1 draw call flat
-    if obj:IsA("SpecialMesh") then
-        pcall(function()
-            if obj.MeshType ~= Enum.MeshType.Head then
-                obj.MeshType = Enum.MeshType.Brick
-            end
-        end)
-        return
-    end
-end
-
--- Chunked VFX scan + live hook
-local function vfxScan()
-    local all   = Workspace:GetDescendants()
-    local total = #all
-    local i     = 1
-    while i <= total do
-        local cap = math.min(i + CFG.CHUNK_SIZE - 1, total)
-        for j = i, cap do
-            optimizeVFX(all[j])
-        end
-        i = cap + 1
-        task.wait()
-    end
-    -- Hook VFX baru yang spawn setelah init (buff, explosion, ability)
-    Workspace.DescendantAdded:Connect(function(obj)
-        task.defer(function() optimizeVFX(obj) end)
-    end)
-    warn("[VFX Optimizer] ✓ World-space VFX reduced, UI untouched")
-end
-
-task.spawn(vfxScan)
-
--- ================================================================
 -- REMOTE RESOLUTION
 -- ================================================================
 local Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
@@ -317,12 +157,12 @@ local EquipEvent, RebirthFunc, IndexClaimRemote,
       QuestClaimRemote, PlaytimeRemote, RebirthStateRemote
 
 if Remotes then
-    EquipEvent         = Remotes:WaitForChild("BackpackEquipBest",    10)
-    RebirthFunc        = Remotes:WaitForChild("RebirthPurchase",      10)
-    IndexClaimRemote   = Remotes:WaitForChild("IndexClaimAllRewards", 10)
-    QuestClaimRemote   = Remotes:WaitForChild("QuestClaimAll",        10)
-    PlaytimeRemote     = Remotes:WaitForChild("ClaimPlaytimeReward",  10)
-    RebirthStateRemote = Remotes:WaitForChild("RebirthGetState",      10)
+    EquipEvent          = Remotes:WaitForChild("BackpackEquipBest",    10)
+    RebirthFunc         = Remotes:WaitForChild("RebirthPurchase",      10)
+    IndexClaimRemote    = Remotes:WaitForChild("IndexClaimAllRewards", 10)
+    QuestClaimRemote    = Remotes:WaitForChild("QuestClaimAll",        10)
+    PlaytimeRemote      = Remotes:WaitForChild("ClaimPlaytimeReward",  10)
+    RebirthStateRemote  = Remotes:WaitForChild("RebirthGetState",      10)
 else
     warn("[AutoLoop] Folder 'Remotes' ga ketemu — semua loop diskip")
 end
@@ -411,7 +251,9 @@ else
 end
 
 -- ================================================================
--- MODULE G · RebirthGetState — 60 detik
+-- MODULE G · RebirthGetState — 60 detik (1 menit)
+-- InvokeServer(true) → server return current rebirth state
+-- Di-fire lebih jarang karena ini cuma state check, bukan action
 -- ================================================================
 if RebirthStateRemote then
     task.spawn(function()
@@ -424,13 +266,12 @@ if RebirthStateRemote then
         end
     end)
 else
-    warn("[RebirthState] Remote ga ketemu — diskip")
+    warn("[RebirthState] Remote 'RebirthGetState' ga ketemu — diskip")
 end
 
 -- ================================================================
 -- TIMING SUMMARY:
---   Module A / A+  →  boot sekali, live hook aktif selamanya
---   Module B/C/D/E →  setiap 30 detik
---   Module F       →  setiap 1 detik per tier (1→15)
---   Module G       →  setiap 60 detik
+--   Module B / C / D / E  →  setiap 30 detik
+--   Module F               →  setiap 1 detik per tier (1→15)
+--   Module G               →  setiap 60 detik (1 menit)
 -- ================================================================
