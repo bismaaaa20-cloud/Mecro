@@ -1,43 +1,57 @@
 -- ================================================================
--- [ROBLOX EXECUTOR] FULL PACK v2.0 — ALL MODULES MERGED
--- ┌─ Module A : FPS Booster (lighting, render, terrain, texture)
--- ├─ Module B : BackpackEquipBest     loop  (FireServer)
--- ├─ Module C : RebirthPurchase       loop  (InvokeServer "Cash")
--- ├─ Module D : IndexClaimAllRewards  loop  (InvokeServer)
--- ├─ Module E : QuestClaimAll         loop  (InvokeServer)
--- └─ Module F : ClaimPlaytimeReward   loop  (InvokeServer 1→15 sequential)
+-- [ROBLOX EXECUTOR] FULL PACK v4.0 — ALL MODULES MERGED
+-- ┌─ Module A  : FPS Booster (lighting, render, terrain, texture)
+-- ├─ Module A+ : VFX Optimizer (world-space visual, skip UI)
+-- ├─ Module B  : BackpackEquipBest     loop  (FireServer)   → 30s
+-- ├─ Module C  : RebirthPurchase       loop  (InvokeServer) → 30s
+-- ├─ Module D  : IndexClaimAllRewards  loop  (InvokeServer) → 30s
+-- ├─ Module E  : QuestClaimAll         loop  (InvokeServer) → 30s
+-- ├─ Module F  : ClaimPlaytimeReward   loop  (1→15 seq)     → 1s/tier
+-- └─ Module G  : RebirthGetState       loop  (InvokeServer) → 60s
 --
--- Runtime   : Luau, Executor context — LocalScript / Exploit injector
+-- Runtime   : Luau, Executor context
 -- Platform  : Windows / Android Roblox Client
--- Privilege : Client-side; FPS changes cuma keliatan lo sendiri
---             Remote fires → server processing
--- Entry     : Top-level, zero framework, zero require()
+-- VFX Note  : Reduce (bukan destroy) — game masih ada visual, lebih ringan
+--             UI (ScreenGui, Frame, dll) tidak disentuh sama sekali
 -- ================================================================
 
--- ─── Services ────────────────────────────────────────────────────────────────
+-- ─── Services ────────────────────────────────────────────────────
 local Lighting          = game:GetService("Lighting")
 local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players           = game:GetService("Players")
+local CoreGui           = game:GetService("CoreGui")
 
--- ─── Master Config ───────────────────────────────────────────────────────────
+-- ─── Master Config ───────────────────────────────────────────────
 local CFG = {
-    -- [ FPS Booster ]
-    STRIP_TEXTURES      = true,   -- Material → SmoothPlastic, hide Decal/Texture
-    STRIP_SHADOWS       = true,   -- CastShadow = false semua BasePart
-    STRIP_EFFECTS       = false,  -- destroy Fire/Smoke/Particle (off by default)
-    CHUNK_SIZE          = 150,    -- instance diproses per frame saat init scan
+    -- [ FPS Booster — Module A ]
+    STRIP_TEXTURES        = true,   -- Material → SmoothPlastic, hide Decal/Texture
+    STRIP_SHADOWS         = true,   -- CastShadow = false semua BasePart
+    STRIP_EFFECTS         = false,  -- destroy Fire/Smoke/Particle (off = pakai A+ aja)
+    CHUNK_SIZE            = 150,    -- instance diproses per frame saat init scan
+
+    -- [ VFX Optimizer — Module A+ ]
+    VFX_OPTIMIZE          = true,   -- aktifkan VFX optimizer
+    VFX_PARTICLE_RATE_CAP = 3,      -- max ParticleEmitter.Rate (default game bisa 50+)
+    VFX_LIFETIME_MULT     = 0.4,    -- lifetime particle × 0.4 (lebih cepet ilang)
+    VFX_SPEED_MULT        = 0.5,    -- speed particle × 0.5
+    VFX_BEAM_WIDTH_MULT   = 0.3,    -- beam width × 0.3 (lebih tipis)
+    VFX_BEAM_SEG_MIN      = 1,      -- minimum segment beam
+    VFX_TRAIL_LENGTH_MULT = 0.3,    -- trail MaxLength × 0.3
+    VFX_FIRE_SIZE_MULT    = 0.4,    -- fire Size × 0.4
+    VFX_SMOKE_DENSITY_MULT= 0.3,    -- smoke Density × 0.3
 
     -- [ Auto Loops ]
-    LOOP_DELAY          = 1,      -- detik antar invoke Module B / C / D / E
-    PLAYTIME_DELAY      = 1,      -- detik antar tier Module F (1→15)
-    PLAYTIME_CYCLE_WAIT = 2,      -- jeda setelah tier ke-15 sebelum cycle ulang
+    LOOP_DELAY            = 30,     -- Module B / C / D / E → 30 detik
+    PLAYTIME_DELAY        = 1,      -- Module F antar tier   → 1 detik
+    PLAYTIME_CYCLE_WAIT   = 2,      -- Module F jeda cycle   → 2 detik
+    REBIRTH_STATE_DELAY   = 60,     -- Module G              → 60 detik
 }
 
 -- ================================================================
--- MODULE A · FPS BOOSTER
+-- MODULE A · FPS BOOSTER (Lighting + Render + Terrain + Texture)
 -- ================================================================
 
--- ── A1: Post-Processing Purge ────────────────────────────────────
 local POST_FX = {
     "ColorCorrectionEffect",
     "DepthOfFieldEffect",
@@ -66,7 +80,6 @@ local function purgePostProcessing()
     end)
 end
 
--- ── A2: Lighting Downgrade ───────────────────────────────────────
 local function downgradeLighting()
     pcall(function() Lighting.GlobalShadows            = false                         end)
     pcall(function() Lighting.Technology               = Enum.Technology.Compatibility end)
@@ -76,38 +89,35 @@ local function downgradeLighting()
     pcall(function() Lighting.EnvironmentSpecularScale = 0                             end)
 end
 
--- ── A3: Engine Render Settings ───────────────────────────────────
 local function applyRenderSettings()
     pcall(function()
-        local R                       = settings().Rendering
-        R.QualityLevel                = Enum.QualityLevel.Level01
-        R.EagerBulkExecution          = false
-        R.InterpolationThrottling     = true
+        local R                   = settings().Rendering
+        R.QualityLevel            = Enum.QualityLevel.Level01
+        R.EagerBulkExecution      = false
+        R.InterpolationThrottling = true
     end)
     pcall(function()
-        local UGS                     = UserSettings():GetService("UserGameSettings")
-        UGS.SavedQualityLevel         = Enum.SavedQualitySetting.QualityLevel01
+        local UGS             = UserSettings():GetService("UserGameSettings")
+        UGS.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel01
     end)
 end
 
--- ── A4: Terrain Strip ────────────────────────────────────────────
 local function stripTerrain()
     local T = Workspace.Terrain
-    pcall(function() T.Decoration       = false end)
-    pcall(function() T.WaterWaveSize    = 0     end)
-    pcall(function() T.WaterWaveSpeed   = 0     end)
-    pcall(function() T.WaterReflectance = 0     end)
-    pcall(function() T.WaterTransparency= 0     end)
+    pcall(function() T.Decoration        = false end)
+    pcall(function() T.WaterWaveSize     = 0     end)
+    pcall(function() T.WaterWaveSpeed    = 0     end)
+    pcall(function() T.WaterReflectance  = 0     end)
+    pcall(function() T.WaterTransparency = 0     end)
 end
 
--- ── A5: Per-Instance Processor ───────────────────────────────────
 local EFFECT_CLASSES = { "Fire", "Smoke", "Sparkles", "ParticleEmitter", "Trail" }
 
 local function processInstance(obj)
     if obj:IsA("BasePart") then
-        if CFG.STRIP_SHADOWS  then pcall(function() obj.CastShadow     = false                          end) end
-        if CFG.STRIP_TEXTURES then pcall(function() obj.Material        = Enum.Material.SmoothPlastic   end) end
-        if CFG.STRIP_TEXTURES then pcall(function() obj.RenderFidelity  = Enum.RenderFidelity.Performance end) end
+        if CFG.STRIP_SHADOWS  then pcall(function() obj.CastShadow     = false                           end) end
+        if CFG.STRIP_TEXTURES then pcall(function() obj.Material       = Enum.Material.SmoothPlastic     end) end
+        if CFG.STRIP_TEXTURES then pcall(function() obj.RenderFidelity = Enum.RenderFidelity.Performance end) end
         return
     end
     if obj:IsA("Texture") or obj:IsA("Decal") then
@@ -128,7 +138,6 @@ local function processInstance(obj)
     end
 end
 
--- ── A6: Chunked Boot Scan ────────────────────────────────────────
 local function bootScan()
     local all   = Workspace:GetDescendants()
     local total = #all
@@ -146,7 +155,6 @@ local function bootScan()
     end)
 end
 
--- ── A7: FPS Booster Boot ─────────────────────────────────────────
 task.spawn(function()
     warn("[FPS Booster] Initializing...")
     purgePostProcessing()
@@ -158,27 +166,169 @@ task.spawn(function()
 end)
 
 -- ================================================================
--- REMOTE RESOLUTION — dipakai Module B / C / D / E / F
--- WaitForChild timeout 10s → nil kalau ga ketemu
--- Semua loop punya if-check sebelum spawn
+-- MODULE A+ · VFX OPTIMIZER
+-- Strategy : REDUCE bukan DESTROY — visual masih ada tapi ringan
+-- Skip     : semua UI (PlayerGui, CoreGui, GuiObject, LayerCollector)
+-- Target   : ParticleEmitter, Beam, Trail, Fire, Smoke, Sparkles
+--            SpecialMesh — semua world-space only
+--
+-- Kenapa reduce bukan destroy:
+--   Game masih keliatan ada efeknya (explosion, aura, buff glow)
+--   tapi GPU draw call-nya jauh lebih sedikit karena:
+--   - Particle lifetime pendek → cepet hilang dari scene
+--   - Particle rate rendah    → jumlah partikel aktif di scene minimal
+--   - Beam width tipis        → fewer pixel fill per draw call
+--   - Trail pendek            → shorter geometry strip per frame
+-- ================================================================
+
+local function isUIObject(obj)
+    -- Cek parent hierarchy — kalau ada di UI space, hard skip
+    local lp = Players.LocalPlayer
+    if lp then
+        local playerGui = lp:FindFirstChild("PlayerGui")
+        if playerGui and obj:IsDescendantOf(playerGui) then return true end
+    end
+    if obj:IsDescendantOf(CoreGui) then return true end
+    -- Cek class langsung — GuiObject = semua UI element 2D
+    -- LayerCollector = ScreenGui, BillboardGui, SurfaceGui container
+    return  obj:IsA("GuiObject")      or
+            obj:IsA("GuiBase2d")      or
+            obj:IsA("LayerCollector") or
+            obj:IsA("UIBase")
+end
+
+local function optimizeVFX(obj)
+    if not CFG.VFX_OPTIMIZE then return end
+    if isUIObject(obj) then return end  -- hard skip semua UI
+
+    -- ── ParticleEmitter ──────────────────────────────────────────
+    -- Rate di-cap biar jumlah partikel aktif di scene minimal
+    -- Lifetime diperpendek biar partikel cepet ilang dari GPU
+    if obj:IsA("ParticleEmitter") then
+        pcall(function()
+            obj.Rate = math.min(obj.Rate, CFG.VFX_PARTICLE_RATE_CAP)
+        end)
+        pcall(function()
+            local mn = obj.Lifetime.Min * CFG.VFX_LIFETIME_MULT
+            local mx = obj.Lifetime.Max * CFG.VFX_LIFETIME_MULT
+            obj.Lifetime = NumberRange.new(math.max(mn, 0.05), math.max(mx, 0.1))
+        end)
+        pcall(function()
+            local mn = obj.Speed.Min * CFG.VFX_SPEED_MULT
+            local mx = obj.Speed.Max * CFG.VFX_SPEED_MULT
+            obj.Speed = NumberRange.new(math.max(mn, 0), math.max(mx, 0.1))
+        end)
+        return
+    end
+
+    -- ── Beam ─────────────────────────────────────────────────────
+    -- Width dikurangin → less pixel fill per draw call
+    -- Segments dikurangin → geometry strip lebih simple
+    if obj:IsA("Beam") then
+        pcall(function()
+            obj.Width0    = math.max(obj.Width0   * CFG.VFX_BEAM_WIDTH_MULT, 0.05)
+            obj.Width1    = math.max(obj.Width1   * CFG.VFX_BEAM_WIDTH_MULT, 0.05)
+            obj.Segments  = math.max(math.floor(obj.Segments * 0.3), CFG.VFX_BEAM_SEG_MIN)
+        end)
+        return
+    end
+
+    -- ── Trail ────────────────────────────────────────────────────
+    -- MaxLength diperkecil → geometry strip pendek = lebih ringan
+    if obj:IsA("Trail") then
+        pcall(function()
+            obj.MaxLength = math.max(obj.MaxLength * CFG.VFX_TRAIL_LENGTH_MULT, 0.05)
+            obj.MinLength = math.max(obj.MinLength * 0.1, 0.01)
+        end)
+        return
+    end
+
+    -- ── Fire ─────────────────────────────────────────────────────
+    -- Size dan Heat dikurangin → particle emitter internal lebih kecil
+    if obj:IsA("Fire") then
+        pcall(function()
+            obj.Size = math.max(obj.Size * CFG.VFX_FIRE_SIZE_MULT, 1)
+            obj.Heat = math.max(obj.Heat * CFG.VFX_FIRE_SIZE_MULT, 1)
+        end)
+        return
+    end
+
+    -- ── Smoke ────────────────────────────────────────────────────
+    -- Density dikurangin → fewer smoke particles rendered
+    if obj:IsA("Smoke") then
+        pcall(function()
+            obj.Density = math.max(obj.Density * CFG.VFX_SMOKE_DENSITY_MULT, 0.05)
+            obj.Size    = math.max(obj.Size    * CFG.VFX_SMOKE_DENSITY_MULT, 0.1)
+        end)
+        return
+    end
+
+    -- ── Sparkles ─────────────────────────────────────────────────
+    -- Ga ada Rate property → bikin invisible via warna hitam
+    -- Masih "ada" tapi zero contribution ke pixel output
+    if obj:IsA("Sparkles") then
+        pcall(function()
+            obj.SparkleColor = Color3.new(0, 0, 0)
+        end)
+        return
+    end
+
+    -- ── SpecialMesh ──────────────────────────────────────────────
+    -- Flatten complex mesh ke Brick untuk non-Head parts
+    -- Brick = simplest geometry = 1 draw call flat
+    if obj:IsA("SpecialMesh") then
+        pcall(function()
+            if obj.MeshType ~= Enum.MeshType.Head then
+                obj.MeshType = Enum.MeshType.Brick
+            end
+        end)
+        return
+    end
+end
+
+-- Chunked VFX scan + live hook
+local function vfxScan()
+    local all   = Workspace:GetDescendants()
+    local total = #all
+    local i     = 1
+    while i <= total do
+        local cap = math.min(i + CFG.CHUNK_SIZE - 1, total)
+        for j = i, cap do
+            optimizeVFX(all[j])
+        end
+        i = cap + 1
+        task.wait()
+    end
+    -- Hook VFX baru yang spawn setelah init (buff, explosion, ability)
+    Workspace.DescendantAdded:Connect(function(obj)
+        task.defer(function() optimizeVFX(obj) end)
+    end)
+    warn("[VFX Optimizer] ✓ World-space VFX reduced, UI untouched")
+end
+
+task.spawn(vfxScan)
+
+-- ================================================================
+-- REMOTE RESOLUTION
 -- ================================================================
 local Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
 
-local EquipEvent, RebirthFunc, IndexClaimRemote, QuestClaimRemote, PlaytimeRemote
+local EquipEvent, RebirthFunc, IndexClaimRemote,
+      QuestClaimRemote, PlaytimeRemote, RebirthStateRemote
 
 if Remotes then
-    EquipEvent       = Remotes:WaitForChild("BackpackEquipBest",    10)
-    RebirthFunc      = Remotes:WaitForChild("RebirthPurchase",      10)
-    IndexClaimRemote = Remotes:WaitForChild("IndexClaimAllRewards", 10)
-    QuestClaimRemote = Remotes:WaitForChild("QuestClaimAll",        10)
-    PlaytimeRemote   = Remotes:WaitForChild("ClaimPlaytimeReward",  10)
+    EquipEvent         = Remotes:WaitForChild("BackpackEquipBest",    10)
+    RebirthFunc        = Remotes:WaitForChild("RebirthPurchase",      10)
+    IndexClaimRemote   = Remotes:WaitForChild("IndexClaimAllRewards", 10)
+    QuestClaimRemote   = Remotes:WaitForChild("QuestClaimAll",        10)
+    PlaytimeRemote     = Remotes:WaitForChild("ClaimPlaytimeReward",  10)
+    RebirthStateRemote = Remotes:WaitForChild("RebirthGetState",      10)
 else
     warn("[AutoLoop] Folder 'Remotes' ga ketemu — semua loop diskip")
 end
 
 -- ================================================================
--- MODULE B · BackpackEquipBest Loop
--- FireServer() → server equip item tier tertinggi di backpack
+-- MODULE B · BackpackEquipBest — 30 detik
 -- ================================================================
 if EquipEvent then
     task.spawn(function()
@@ -189,12 +339,11 @@ if EquipEvent then
         end
     end)
 else
-    warn("[EquipBest] Remote 'BackpackEquipBest' ga ketemu — diskip")
+    warn("[EquipBest] Remote ga ketemu — diskip")
 end
 
 -- ================================================================
--- MODULE C · RebirthPurchase Loop
--- InvokeServer("Cash") → server proses rebirth pakai currency Cash
+-- MODULE C · RebirthPurchase — 30 detik
 -- ================================================================
 if RebirthFunc then
     task.spawn(function()
@@ -205,12 +354,11 @@ if RebirthFunc then
         end
     end)
 else
-    warn("[Rebirth] Remote 'RebirthPurchase' ga ketemu — diskip")
+    warn("[Rebirth] Remote ga ketemu — diskip")
 end
 
 -- ================================================================
--- MODULE D · IndexClaimAllRewards Loop
--- InvokeServer() tanpa args → server claim semua index reward
+-- MODULE D · IndexClaimAllRewards — 30 detik
 -- ================================================================
 if IndexClaimRemote then
     task.spawn(function()
@@ -221,12 +369,11 @@ if IndexClaimRemote then
         end
     end)
 else
-    warn("[IndexClaim] Remote 'IndexClaimAllRewards' ga ketemu — diskip")
+    warn("[IndexClaim] Remote ga ketemu — diskip")
 end
 
 -- ================================================================
--- MODULE E · QuestClaimAll Loop
--- InvokeServer() tanpa args → server claim semua quest reward aktif
+-- MODULE E · QuestClaimAll — 30 detik
 -- ================================================================
 if QuestClaimRemote then
     task.spawn(function()
@@ -237,13 +384,11 @@ if QuestClaimRemote then
         end
     end)
 else
-    warn("[QuestClaim] Remote 'QuestClaimAll' ga ketemu — diskip")
+    warn("[QuestClaim] Remote ga ketemu — diskip")
 end
 
 -- ================================================================
--- MODULE F · ClaimPlaytimeReward Sequential Loop (tier 1 → 15)
--- Sequential bukan parallel — server validasi tier secara ordered
--- Fire(1) → wait → Fire(2) → ... → Fire(15) → jeda → ulang dari 1
+-- MODULE F · ClaimPlaytimeReward Sequential (1→15) — 1s/tier
 -- ================================================================
 if PlaytimeRemote then
     task.spawn(function()
@@ -262,14 +407,30 @@ if PlaytimeRemote then
         end
     end)
 else
-    warn("[Playtime] Remote 'ClaimPlaytimeReward' ga ketemu — diskip")
+    warn("[Playtime] Remote ga ketemu — diskip")
 end
 
 -- ================================================================
--- SEMUA 6 MODULE JALAN CONCURRENT — zero blocking satu sama lain
---
--- Mau adjust timing? Edit CFG di atas doang:
---   LOOP_DELAY          → kecepatan loop B / C / D / E
---   PLAYTIME_DELAY      → jarak antar tier di Module F
---   PLAYTIME_CYCLE_WAIT → jeda setelah tier ke-15
+-- MODULE G · RebirthGetState — 60 detik
+-- ================================================================
+if RebirthStateRemote then
+    task.spawn(function()
+        while true do
+            local ok, err = pcall(function()
+                return RebirthStateRemote:InvokeServer(true)
+            end)
+            if not ok then warn("[RebirthState] " .. tostring(err)) end
+            task.wait(CFG.REBIRTH_STATE_DELAY)
+        end
+    end)
+else
+    warn("[RebirthState] Remote ga ketemu — diskip")
+end
+
+-- ================================================================
+-- TIMING SUMMARY:
+--   Module A / A+  →  boot sekali, live hook aktif selamanya
+--   Module B/C/D/E →  setiap 30 detik
+--   Module F       →  setiap 1 detik per tier (1→15)
+--   Module G       →  setiap 60 detik
 -- ================================================================
