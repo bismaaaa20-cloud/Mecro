@@ -1,309 +1,275 @@
--- =================================================================
--- BAGIAN 1: SAKLAR DINAMIS (PC <-> MOBILE AUTO SWITCH) & MEMORI CONFIG
--- =================================================================
+-- ================================================================
+-- [ROBLOX EXECUTOR] FULL PACK v2.0 — ALL MODULES MERGED
+-- ┌─ Module A : FPS Booster (lighting, render, terrain, texture)
+-- ├─ Module B : BackpackEquipBest     loop  (FireServer)
+-- ├─ Module C : RebirthPurchase       loop  (InvokeServer "Cash")
+-- ├─ Module D : IndexClaimAllRewards  loop  (InvokeServer)
+-- ├─ Module E : QuestClaimAll         loop  (InvokeServer)
+-- └─ Module F : ClaimPlaytimeReward   loop  (InvokeServer 1→15 sequential)
+--
+-- Runtime   : Luau, Executor context — LocalScript / Exploit injector
+-- Platform  : Windows / Android Roblox Client
+-- Privilege : Client-side; FPS changes cuma keliatan lo sendiri
+--             Remote fires → server processing
+-- Entry     : Top-level, zero framework, zero require()
+-- ================================================================
 
-_G.UserInputService = game:GetService("UserInputService")
-_G.VirtualInputManager = game:GetService("VirtualInputManager")
-_G.HttpService = game:GetService("HttpService")
-_G.Camera = workspace.CurrentCamera
-_G.Player = game.Players.LocalPlayer
-_G.CoreGui = game:GetService("CoreGui")
+-- ─── Services ────────────────────────────────────────────────────────────────
+local Lighting          = game:GetService("Lighting")
+local Workspace         = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-_G.NamaFileConfig = "MacroConfig_BloxFruits_HybridV3.json"
+-- ─── Master Config ───────────────────────────────────────────────────────────
+local CFG = {
+    -- [ FPS Booster ]
+    STRIP_TEXTURES      = true,   -- Material → SmoothPlastic, hide Decal/Texture
+    STRIP_SHADOWS       = true,   -- CastShadow = false semua BasePart
+    STRIP_EFFECTS       = false,  -- destroy Fire/Smoke/Particle (off by default)
+    CHUNK_SIZE          = 150,    -- instance diproses per frame saat init scan
 
--- Mengunci metatable Roblox agar bisa memanipulasi deteksi perangkat secara dinamis
-local metatable = getrawmetatable(game)
-if setreadonly then setreadonly(metatable, false) elseif make_writeable then make_writeable(metatable, false) end
-local oldIndex = metatable.__index
-
-metatable.__index = newcclosure(function(self, key)
-    if self == _G.UserInputService then
-        -- Mengecek apakah ada tombol makro yang sedang aktif menyala
-        local adaMakroAktif = _G.MacroState.AutoM1 or _G.MacroState.Z or _G.MacroState.X or _G.MacroState.C or _G.MacroState.V or _G.MacroState.F
-        
-        if adaMakroAktif then
-            -- Jika ada makro menyala, paksa game membaca input Komputer (PC)
-            if key == "KeyboardEnabled" or key == "MouseEnabled" then return true
-            elseif key == "TouchEnabled" then return false end
-        else
-            -- Jika semua saklar mati, kembalikan ke mode HP / Mobile total agar analog muncul
-            if key == "KeyboardEnabled" or key == "MouseEnabled" then return false
-            elseif key == "TouchEnabled" then return true end
-        end
-    end
-    return oldIndex(self, key)
-end)
-
--- Tabel pencatatan data status tombol dan durasi tahan
-_G.MacroState = {
-    AutoM1 = false,
-    Z = false, X = false, C = false, V = false, F = false,
-    HoldZ = 1.0, HoldX = 1.0, HoldC = 1.0, HoldV = 1.0, HoldF = 1.0
+    -- [ Auto Loops ]
+    LOOP_DELAY          = 1,      -- detik antar invoke Module B / C / D / E
+    PLAYTIME_DELAY      = 1,      -- detik antar tier Module F (1→15)
+    PLAYTIME_CYCLE_WAIT = 2,      -- jeda setelah tier ke-15 sebelum cycle ulang
 }
 
-_G.simpanSetelanKeHP = function()
-    pcall(function()
-        if writefile then
-            writefile(_G.NamaFileConfig, _G.HttpService:JSONEncode(_G.MacroState))
+-- ================================================================
+-- MODULE A · FPS BOOSTER
+-- ================================================================
+
+-- ── A1: Post-Processing Purge ────────────────────────────────────
+local POST_FX = {
+    "ColorCorrectionEffect",
+    "DepthOfFieldEffect",
+    "SunRaysEffect",
+    "BloomEffect",
+    "BlurEffect",
+    "Atmosphere",
+}
+
+local function purgePostProcessing()
+    for _, obj in ipairs(Lighting:GetDescendants()) do
+        for _, cls in ipairs(POST_FX) do
+            if obj:IsA(cls) then
+                pcall(function() obj:Destroy() end)
+                break
+            end
+        end
+    end
+    Lighting.DescendantAdded:Connect(function(obj)
+        for _, cls in ipairs(POST_FX) do
+            if obj:IsA(cls) then
+                task.defer(function() pcall(function() obj:Destroy() end) end)
+                break
+            end
         end
     end)
 end
 
-_G.muatSetelanDariHP = function()
+-- ── A2: Lighting Downgrade ───────────────────────────────────────
+local function downgradeLighting()
+    pcall(function() Lighting.GlobalShadows            = false                         end)
+    pcall(function() Lighting.Technology               = Enum.Technology.Compatibility end)
+    pcall(function() Lighting.FogEnd                   = 100000                        end)
+    pcall(function() Lighting.FogStart                 = 99999                         end)
+    pcall(function() Lighting.EnvironmentDiffuseScale  = 0                             end)
+    pcall(function() Lighting.EnvironmentSpecularScale = 0                             end)
+end
+
+-- ── A3: Engine Render Settings ───────────────────────────────────
+local function applyRenderSettings()
     pcall(function()
-        if isfile and readfile and isfile(_G.NamaFileConfig) then
-            local dataTabel = _G.HttpService:JSONDecode(readfile(_G.NamaFileConfig))
-            if dataTabel then
-                for key, value in pairs(dataTabel) do
-                    if _G.MacroState[key] ~= nil then _G.MacroState[key] = value end
+        local R                       = settings().Rendering
+        R.QualityLevel                = Enum.QualityLevel.Level01
+        R.EagerBulkExecution          = false
+        R.InterpolationThrottling     = true
+    end)
+    pcall(function()
+        local UGS                     = UserSettings():GetService("UserGameSettings")
+        UGS.SavedQualityLevel         = Enum.SavedQualitySetting.QualityLevel01
+    end)
+end
+
+-- ── A4: Terrain Strip ────────────────────────────────────────────
+local function stripTerrain()
+    local T = Workspace.Terrain
+    pcall(function() T.Decoration       = false end)
+    pcall(function() T.WaterWaveSize    = 0     end)
+    pcall(function() T.WaterWaveSpeed   = 0     end)
+    pcall(function() T.WaterReflectance = 0     end)
+    pcall(function() T.WaterTransparency= 0     end)
+end
+
+-- ── A5: Per-Instance Processor ───────────────────────────────────
+local EFFECT_CLASSES = { "Fire", "Smoke", "Sparkles", "ParticleEmitter", "Trail" }
+
+local function processInstance(obj)
+    if obj:IsA("BasePart") then
+        if CFG.STRIP_SHADOWS  then pcall(function() obj.CastShadow     = false                          end) end
+        if CFG.STRIP_TEXTURES then pcall(function() obj.Material        = Enum.Material.SmoothPlastic   end) end
+        if CFG.STRIP_TEXTURES then pcall(function() obj.RenderFidelity  = Enum.RenderFidelity.Performance end) end
+        return
+    end
+    if obj:IsA("Texture") or obj:IsA("Decal") then
+        if CFG.STRIP_TEXTURES then pcall(function() obj.Transparency = 1 end) end
+        return
+    end
+    if obj:IsA("SurfaceAppearance") then
+        if CFG.STRIP_TEXTURES then pcall(function() obj:Destroy() end) end
+        return
+    end
+    if CFG.STRIP_EFFECTS then
+        for _, cls in ipairs(EFFECT_CLASSES) do
+            if obj:IsA(cls) then
+                pcall(function() obj:Destroy() end)
+                return
+            end
+        end
+    end
+end
+
+-- ── A6: Chunked Boot Scan ────────────────────────────────────────
+local function bootScan()
+    local all   = Workspace:GetDescendants()
+    local total = #all
+    local i     = 1
+    while i <= total do
+        local cap = math.min(i + CFG.CHUNK_SIZE - 1, total)
+        for j = i, cap do
+            processInstance(all[j])
+        end
+        i = cap + 1
+        task.wait()
+    end
+    Workspace.DescendantAdded:Connect(function(obj)
+        task.defer(function() processInstance(obj) end)
+    end)
+end
+
+-- ── A7: FPS Booster Boot ─────────────────────────────────────────
+task.spawn(function()
+    warn("[FPS Booster] Initializing...")
+    purgePostProcessing()
+    downgradeLighting()
+    applyRenderSettings()
+    stripTerrain()
+    task.spawn(bootScan)
+    warn("[FPS Booster] ✓ All visual modules loaded")
+end)
+
+-- ================================================================
+-- REMOTE RESOLUTION — dipakai Module B / C / D / E / F
+-- WaitForChild timeout 10s → nil kalau ga ketemu
+-- Semua loop punya if-check sebelum spawn
+-- ================================================================
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+
+local EquipEvent, RebirthFunc, IndexClaimRemote, QuestClaimRemote, PlaytimeRemote
+
+if Remotes then
+    EquipEvent       = Remotes:WaitForChild("BackpackEquipBest",    10)
+    RebirthFunc      = Remotes:WaitForChild("RebirthPurchase",      10)
+    IndexClaimRemote = Remotes:WaitForChild("IndexClaimAllRewards", 10)
+    QuestClaimRemote = Remotes:WaitForChild("QuestClaimAll",        10)
+    PlaytimeRemote   = Remotes:WaitForChild("ClaimPlaytimeReward",  10)
+else
+    warn("[AutoLoop] Folder 'Remotes' ga ketemu — semua loop diskip")
+end
+
+-- ================================================================
+-- MODULE B · BackpackEquipBest Loop
+-- FireServer() → server equip item tier tertinggi di backpack
+-- ================================================================
+if EquipEvent then
+    task.spawn(function()
+        while true do
+            local ok, err = pcall(function() EquipEvent:FireServer() end)
+            if not ok then warn("[EquipBest] " .. tostring(err)) end
+            task.wait(CFG.LOOP_DELAY)
+        end
+    end)
+else
+    warn("[EquipBest] Remote 'BackpackEquipBest' ga ketemu — diskip")
+end
+
+-- ================================================================
+-- MODULE C · RebirthPurchase Loop
+-- InvokeServer("Cash") → server proses rebirth pakai currency Cash
+-- ================================================================
+if RebirthFunc then
+    task.spawn(function()
+        while true do
+            local ok, err = pcall(function() return RebirthFunc:InvokeServer("Cash") end)
+            if not ok then warn("[Rebirth] " .. tostring(err)) end
+            task.wait(CFG.LOOP_DELAY)
+        end
+    end)
+else
+    warn("[Rebirth] Remote 'RebirthPurchase' ga ketemu — diskip")
+end
+
+-- ================================================================
+-- MODULE D · IndexClaimAllRewards Loop
+-- InvokeServer() tanpa args → server claim semua index reward
+-- ================================================================
+if IndexClaimRemote then
+    task.spawn(function()
+        while true do
+            local ok, err = pcall(function() return IndexClaimRemote:InvokeServer() end)
+            if not ok then warn("[IndexClaim] " .. tostring(err)) end
+            task.wait(CFG.LOOP_DELAY)
+        end
+    end)
+else
+    warn("[IndexClaim] Remote 'IndexClaimAllRewards' ga ketemu — diskip")
+end
+
+-- ================================================================
+-- MODULE E · QuestClaimAll Loop
+-- InvokeServer() tanpa args → server claim semua quest reward aktif
+-- ================================================================
+if QuestClaimRemote then
+    task.spawn(function()
+        while true do
+            local ok, err = pcall(function() return QuestClaimRemote:InvokeServer() end)
+            if not ok then warn("[QuestClaim] " .. tostring(err)) end
+            task.wait(CFG.LOOP_DELAY)
+        end
+    end)
+else
+    warn("[QuestClaim] Remote 'QuestClaimAll' ga ketemu — diskip")
+end
+
+-- ================================================================
+-- MODULE F · ClaimPlaytimeReward Sequential Loop (tier 1 → 15)
+-- Sequential bukan parallel — server validasi tier secara ordered
+-- Fire(1) → wait → Fire(2) → ... → Fire(15) → jeda → ulang dari 1
+-- ================================================================
+if PlaytimeRemote then
+    task.spawn(function()
+        while true do
+            for tier = 1, 15 do
+                local ok, err = pcall(function()
+                    return PlaytimeRemote:InvokeServer(tier)
+                end)
+                if not ok then
+                    warn("[Playtime] Tier " .. tier .. " reject: " .. tostring(err))
                 end
+                task.wait(CFG.PLAYTIME_DELAY)
             end
+            warn("[Playtime] Cycle 1→15 done — restart in " .. CFG.PLAYTIME_CYCLE_WAIT .. "s")
+            task.wait(CFG.PLAYTIME_CYCLE_WAIT)
         end
     end)
-end
-_G.muatSetelanDariHP()
--- =================================================================
--- BAGIAN 2: ELEMEN UTAMA BINGKAI MENU UI, SCROLL, & MINIMIZE BUTTON
--- =================================================================
-
-_G.ScreenGui = Instance.new("ScreenGui")
-_G.ScreenGui.Name = "BloxFruitsPremiumV3UI"
-_G.ScreenGui.Parent = _G.CoreGui:FindFirstChild("RobloxGui") or _G.CoreGui
-
--- Tombol buka/tutup menu (Kecil bulat biru, bisa digeser posisinya di layar)
-local ToggleUIBtn = Instance.new("TextButton", _G.ScreenGui)
-ToggleUIBtn.Size, ToggleUIBtn.Position = UDim2.new(0, 48, 0, 48), UDim2.new(0.05, 0, 0.05, 0)
-ToggleUIBtn.BackgroundColor3, ToggleUIBtn.Text, ToggleUIBtn.TextColor3 = Color3.fromRGB(0, 150, 255), "☰", Color3.fromRGB(255, 255, 255)
-ToggleUIBtn.Font, ToggleUIBtn.TextSize, ToggleUIBtn.Active, ToggleUIBtn.Draggable = Enum.Font.SourceSansBold, 24, true, true
-Instance.new("UICorner", ToggleUIBtn).CornerRadius = UDim.new(1, 0)
-
--- Bingkai panel utama (Hanya pinggiran ini dan Title yang bisa digeser seluruhnya)
-_G.MainFrame = Instance.new("Frame", _G.ScreenGui)
-_G.MainFrame.Size, _G.MainFrame.Position = UDim2.new(0, 245, 0, 370), UDim2.new(0.05, 0, 0.15, 0)
-_G.MainFrame.BackgroundColor3, _G.MainFrame.BorderSizePixel, _G.MainFrame.Active, _G.MainFrame.Draggable = Color3.fromRGB(15, 15, 22), 0, true, true
-Instance.new("UICorner", _G.MainFrame).CornerRadius = UDim.new(0, 12)
-
-local Title = Instance.new("TextLabel", _G.MainFrame)
-Title.Size, Title.Text, Title.TextColor3 = UDim2.new(1, 0, 0, 38), "PREMIUM HOLD MACRO V3", Color3.fromRGB(255, 255, 255)
-Title.BackgroundColor3, Title.TextSize, Title.Font = Color3.fromRGB(25, 25, 35), 12, Enum.Font.SourceSansBold
-Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 12)
-
-ToggleUIBtn.MouseButton1Click:Connect(function() _G.MainFrame.Visible = not _G.MainFrame.Visible end)
-
--- Wadah scroll bar (Dikunci: Tidak merusak pergerakan bingkai saat mengusap isi dalam) [I]
-_G.Scroll = Instance.new("ScrollingFrame", _G.MainFrame)
-_G.Scroll.Size, _G.Scroll.Position = UDim2.new(1, -12, 1, -48), UDim2.new(0, 6, 0, 42)
-_G.Scroll.BackgroundTransparency, _G.Scroll.BorderSizePixel, _G.Scroll.CanvasSize = 1, 0, UDim2.new(0, 0, 0, 460)
-_G.Scroll.ScrollBarThickness, _G.Scroll.ScrollBarImageColor3, _G.Scroll.Active = 4, Color3.fromRGB(0, 150, 255), false
--- =================================================================
--- BAGIAN 3: GENERATOR TOMBOL SKILL & SLIDER INDEPENDEN (ANTI BENTROK)
--- =================================================================
-
-_G.allUpdates = {}
-_G.listSkillName = {"Z", "X", "C", "V", "F"}
-
-_G.buatKomponenSkill = function(name, idx)
-    local curY = 38 + ((idx - 1) * 64)
-    local kAct, kHold = name, "Hold" .. name
-
-    local Btn = Instance.new("TextButton", _G.Scroll)
-    Btn.Size, Btn.Position = UDim2.new(0, 210, 0, 28), UDim2.new(0, 5, 0, curY)
-    Btn.Font, Btn.TextSize = Enum.Font.SourceSansBold, 12
-    Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 6)
-
-    local function updateVisual()
-        Btn.Text = _G.MacroState[kAct] and "Skill " .. name .. " : ACTIVE (ON)" or "Skill " .. name .. " : DISABLED (OFF)"
-        Btn.BackgroundColor3 = _G.MacroState[kAct] and Color3.fromRGB(30, 140, 60) or Color3.fromRGB(40, 40, 50)
-        Btn.TextColor3 = _G.MacroState[kAct] and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
-    end
-    updateVisual()
-    table.insert(_G.allUpdates, updateVisual)
-
-    Btn.MouseButton1Click:Connect(function() _G.MacroState[kAct] = not _G.MacroState[kAct] updateVisual() _G.simpanSetelanKeHP() end)
-
-    local SFrame = Instance.new("Frame", _G.Scroll)
-    SFrame.Size, SFrame.Position, SFrame.BackgroundTransparency = UDim2.new(0, 210, 0, 30), UDim2.new(0, 5, 0, curY + 30), 1
-
-    local SLabel = Instance.new("TextLabel", SFrame)
-    SLabel.Size, SLabel.BackgroundTransparency, SLabel.TextXAlignment = UDim2.new(1, 0, 0, 14), 1, Enum.TextXAlignment.Left
-    SLabel.TextColor3, SLabel.Font, SLabel.TextSize = Color3.fromRGB(190, 190, 200), Enum.Font.SourceSans, 11
-
-    local STrack = Instance.new("Frame", SFrame)
-    STrack.Size, STrack.Position, STrack.BackgroundColor3, STrack.BorderSizePixel = UDim2.new(1, 0, 0, 5), UDim2.new(0, 0, 0, 18), Color3.fromRGB(45, 45, 55), 0
-    Instance.new("UICorner", STrack).CornerRadius = UDim.new(0, 3)
-
-    local SBtn = Instance.new("TextButton", STrack)
-    SBtn.Size, SBtn.BackgroundColor3, SBtn.Text = UDim2.new(0, 14, 0, 14), Color3.fromRGB(0, 150, 255), ""
-    Instance.new("UICorner", SBtn).CornerRadius = UDim.new(1, 0)
-
-    local function refreshSlider()
-        local pct = (_G.MacroState[kHold] - 1) / (40 - 1)
-        SBtn.Position = UDim2.new(pct, -7, 0, -5)
-        SLabel.Text = "Durasi Tahan [" .. name .. "]: " .. string.format("%.1f", _G.MacroState[kHold]) .. " Detik"
-    end
-    refreshSlider()
-
-    -- Saklar lokal mandiri pengunci tarikan geser luar/jalur track slider saja
-    local isDragging = false
-    SBtn.MouseButton1Down:Connect(function() isDragging = true end)
-    _G.UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then isDragging = false end end)
-
-    _G.UserInputService.InputChanged:Connect(function(input)
-        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local pct = math.clamp((input.Position.X - STrack.AbsolutePosition.X) / STrack.AbsoluteSize.X, 0, 1)
-            _G.MacroState[kHold] = math.round((1 + (pct * 39)) * 10) / 10
-            refreshSlider()
-            _G.simpanSetelanKeHP()
-        end
-    end)
+else
+    warn("[Playtime] Remote 'ClaimPlaytimeReward' ga ketemu — diskip")
 end
 
--- Menjalankan duplikasi otomatis untuk melahirkan seluruh tombol + slider
-for idx, name in ipairs(_G.listSkillName) do _G.buatKomponenSkill(name, idx) end
--- =================================================================
--- BAGIAN 4: MASTER BUTTONS CONTROL (M1 POJOK, MASS ON & OFF)
--- =================================================================
-
-local BtnM1 = Instance.new("TextButton", _G.Scroll)
-BtnM1.Size, BtnM1.Position = UDim2.new(0, 210, 0, 28), UDim2.new(0, 5, 0, 5)
-BtnM1.Font, BtnM1.TextSize = Enum.Font.SourceSansBold, 12
-Instance.new("UICorner", BtnM1).CornerRadius = UDim.new(0, 6)
-
-_G.upM1Visual = function()
-    BtnM1.Text = _G.MacroState.AutoM1 and "Auto Pukul (Ujung Pojok) : ON" or "Auto Pukul (Ujung Pojok) : OFF"
-    BtnM1.BackgroundColor3 = _G.MacroState.AutoM1 and Color3.fromRGB(30, 140, 60) or Color3.fromRGB(40, 40, 50)
-    BtnM1.TextColor3 = _G.MacroState.AutoM1 and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
-end
-_G.upM1Visual()
-BtnM1.MouseButton1Click:Connect(function() _G.MacroState.AutoM1 = not _G.MacroState.AutoM1 _G.upM1Visual() _G.simpanSetelanKeHP() end)
-
-local startY = 38 + (#_G.listSkillName * 64)
-local BtnOn = Instance.new("TextButton", _G.Scroll)
-BtnOn.Size, BtnOn.Position, BtnOn.Text, BtnOn.BackgroundColor3 = UDim2.new(0, 210, 0, 28), UDim2.new(0, 5, 0, startY + 5), "⚡ OTOMATIS SAKLAR ALL ON", Color3.fromRGB(0, 100, 220)
-BtnOn.TextColor3, BtnOn.Font, BtnOn.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.SourceSansBold, 11
-Instance.new("UICorner", BtnOn).CornerRadius = UDim.new(0, 6)
-
-BtnOn.MouseButton1Click:Connect(function()
-    for i, k in ipairs(_G.listSkillName) do _G.MacroState[k] = true _G.allUpdates[i]() end
-    _G.simpanSetelanKeHP()
-end)
-
-local BtnOff = Instance.new("TextButton", _G.Scroll)
-BtnOff.Size, BtnOff.Position, BtnOff.Text, BtnOff.BackgroundColor3 = UDim2.new(0, 210, 0, 28), UDim2.new(0, 5, 0, startY + 38), "🛑 MATIKAN SEMUA SAKLAR", Color3.fromRGB(160, 35, 35)
-BtnOff.TextColor3, BtnOff.Font, BtnOff.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.SourceSansBold, 11
-Instance.new("UICorner", BtnOff).CornerRadius = UDim.new(0, 6)
-
-BtnOff.MouseButton1Click:Connect(function()
-    _G.MacroState.AutoM1 = false _G.upM1Visual()
-    for i, k in ipairs(_G.listSkillName) do _G.MacroState[k] = false _G.allUpdates[i]() end
-    _G.simpanSetelanKeHP()
-end)
--- =================================================================
--- BAGIAN 5: REAL-TIME INDEPENDENT HOLD & MULTI-THREADING SYSTEM
--- =================================================================
-
--- Fungsi pemantau ketat: Mengirim sinyal jepitan konstan secepat 15 milidetik agar anti-lepas
-local function jalankanMekanismeTahanPasti(keyCode, totalDurasiDetik)
-    local waktuMulaiMengecek = tick()
-    while (tick() - waktuMulaiMengecek) < totalDurasiDetik do
-        _G.VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-        task.wait(0.015)
-    end
-    _G.VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
-end
-
--- Thread Pengatur Sinkronisasi UI Analog HP (Otomatis memulihkan kontrol jika semua OFF)
-task.spawn(function()
-    local statusTerakhirPC = false
-    while true do
-        pcall(function()
-            local adaMakroAktif = _G.MacroState.AutoM1 or _G.MacroState.Z or _G.MacroState.X or _G.MacroState.C or _G.MacroState.V or _G.MacroState.F
-            if adaMakroAktif ~= statusTerakhirPC then
-                statusTerakhirPC = adaMakroAktif
-                _G.UserInputService.TouchEnabled = not adaMakroAktif
-                _G.UserInputService.KeyboardEnabled = adaMakroAktif
-            end
-        end)
-        task.wait(0.1)
-    end
-end)
-
--- MULTI-THREADING: Setiap tombol mengecek dan menekan jalurnya masing-masing secara bersamaan
--- Jika satu tombol sedang cooldown atau sedang menahan, tombol lain TETAP AKAN BERJALAN [I]
-
--- Jalur Skill Z
-task.spawn(function()
-    while true do
-        pcall(function()
-            if _G.MacroState.Z and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
-                jalankanMekanismeTahanPasti(Enum.KeyCode.Z, _G.MacroState.HoldZ)
-            end
-        end)
-        task.wait(0.1)
-    end
-end)
-
--- Jalur Skill X
-task.spawn(function()
-    while true do
-        pcall(function()
-            if _G.MacroState.X and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
-                jalankanMekanismeTahanPasti(Enum.KeyCode.X, _G.MacroState.HoldX)
-            end
-        end)
-        task.wait(0.1)
-    end
-end)
-
--- Jalur Skill C
-task.spawn(function()
-    while true do
-        pcall(function()
-            if _G.MacroState.C and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
-                jalankanMekanismeTahanPasti(Enum.KeyCode.C, _G.MacroState.HoldC)
-            end
-        end)
-        task.wait(0.1)
-    end
-end)
-
--- Jalur Skill V
-task.spawn(function()
-    while true do
-        pcall(function()
-            if _G.MacroState.V and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
-                jalankanMekanismeTahanPasti(Enum.KeyCode.V, _G.MacroState.HoldV)
-            end
-        end)
-        task.wait(0.1)
-    end
-end)
-
--- Jalur Skill F
-task.spawn(function()
-    while true do
-        pcall(function()
-            if _G.MacroState.F and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
-                jalankanMekanismeTahanPasti(Enum.KeyCode.F, _G.MacroState.HoldF)
-            end
-        end)
-        task.wait(0.1)
-    end
-end)
-
--- Thread Loop Pukulan Cepat (M1) di Sudut Piksel Ujung Paling Kiri Atas Screen (0,0 Area)
-task.spawn(function()
-    while true do
-        pcall(function()
-            if _G.MacroState.AutoM1 and _G.Player.Character and _G.Player.Character.Humanoid.Health > 0 then
-                local ujungX = _G.Camera.ViewportSize.X * 0.02
-                local ujungY = _G.Camera.ViewportSize.Y * 0.02
-                
-                _G.VirtualInputManager:SendMouseButtonEvent(ujungX, ujungY, 0, true, game, 1)
-                task.wait(0.02)
-                _G.VirtualInputManager:SendMouseButtonEvent(ujungX, ujungY, 0, false, game, 1)
-            end
-        end)
-        task.wait(0.15)
-    end
-end)
+-- ================================================================
+-- SEMUA 6 MODULE JALAN CONCURRENT — zero blocking satu sama lain
+--
+-- Mau adjust timing? Edit CFG di atas doang:
+--   LOOP_DELAY          → kecepatan loop B / C / D / E
+--   PLAYTIME_DELAY      → jarak antar tier di Module F
+--   PLAYTIME_CYCLE_WAIT → jeda setelah tier ke-15
+-- ================================================================
