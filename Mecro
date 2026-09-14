@@ -45,7 +45,7 @@ local CFG = {
     LOOP_DELAY            = 30,     -- Module B / C / D / E → 30 detik
     PLAYTIME_DELAY        = 1,      -- Module F antar tier   → 1 detik
     PLAYTIME_CYCLE_WAIT   = 2,      -- Module F jeda cycle   → 2 detik
-    REBIRTH_STATE_DELAY   = 60,     -- Module G              → 60 detik
+    REBIRTH_STATE_DELAY   = 300,     -- Module G              → 60 detik
 }
 
 -- ================================================================
